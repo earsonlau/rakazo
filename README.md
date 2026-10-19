@@ -1,5 +1,7 @@
 # Rakazo
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 [![GitHub stars](https://img.shields.io/github/stars/elie222/rakazo?labelColor=black&style=for-the-badge&color=2563EB)](https://github.com/elie222/rakazo/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?labelColor=black&style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/RWwKa2Sn7h)
 [![Download on the App Store](https://img.shields.io/badge/App%20Store-Download%20for%20iPhone-black?labelColor=black&style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/rakazo/id6801531099)
@@ -227,7 +229,7 @@ Mobile build and release instructions live in [docs/mobile-release.md](./docs/mo
 ## UI language
 
 The web (and Electron-hosted) UI supports English, Deutsch, 한국어, Türkçe, हिन्दी,
-Português (Brasil), 简体中文, Español, and Русский under **Settings → Language**. The Expo
+Português (Brasil), 简体中文, Español, Русский, Français, and עברית under **Settings → Language**. The Expo
 app ships English, 简体中文, Русский, and Deutsch catalogs, and **Account → Language**
 lists all four. A device language or `EXPO_PUBLIC_DEFAULT_UI_LOCALE` still selects
 the starting catalog before a saved choice. The marketing
