@@ -934,7 +934,20 @@ function Home() {
         ) : (
           <View style={styles.sectionHeadingRow}>
             <Text style={[styles.sectionHeading, { flex: 1 }]}>{item.title}</Text>
-            {item.sectionId ? (
+            {item.sectionId && Platform.OS === "android" ? (
+              // A plain button, like the create control: the Android menu trigger can collapse to
+              // zero width on an older binary, which would hide the only way to delete an empty section.
+              <Pressable
+                accessibilityLabel={t("Delete section")}
+                accessibilityRole="button"
+                onPress={() => {
+                  if (item.sectionId) deleteSection({ id: item.sectionId, name: item.title });
+                }}
+                style={styles.spaceActions}
+              >
+                <NativeSymbol ios="ellipsis" android="ellipsis-horizontal" size={20} />
+              </Pressable>
+            ) : item.sectionId ? (
               <MenuView
                 actions={[
                   {
