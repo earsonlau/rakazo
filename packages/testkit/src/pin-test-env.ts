@@ -5,6 +5,7 @@
 if (!process.env.VERIFY_PROVIDERS) {
   process.env.AGENT_RUNTIME = "scripted";
   process.env.SANDBOX_PROVIDER = "fake";
+  process.env.CODE_EXPERIMENT_PROVIDER = "none";
   process.env.CLOUD_AGENT_PROVIDER = "emulator";
   process.env.MEDIA_GENERATION_PROVIDER = "disabled";
   delete process.env.MEDIA_GENERATION_API_KEY;

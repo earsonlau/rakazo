@@ -9,6 +9,7 @@ describeFast("pnpm test emulator pin", () => {
   it("forces scripted runtime, fake sandbox, and in-memory wakeup", () => {
     expect(process.env.AGENT_RUNTIME).toBe("scripted");
     expect(process.env.SANDBOX_PROVIDER).toBe("fake");
+    expect(process.env.CODE_EXPERIMENT_PROVIDER).toBe("none");
     expect(process.env.WAKEUP_DRIVER).toBe("memory");
   });
 

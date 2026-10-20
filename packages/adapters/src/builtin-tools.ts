@@ -12,6 +12,7 @@ import {
 } from "@rakazo/contracts";
 import { z } from "zod";
 import { allowPrivateHttpSecretOrigins } from "./bot-secrets.js";
+import { codeExperimentTool } from "./code-experiment-tools.js";
 import { messageUserMaxLength } from "./user-progress.js";
 
 // The owner flag can land in process.env after static imports run (loadRootEnv
@@ -204,6 +205,7 @@ const fleetGroupTargetProperties = {
 };
 
 export const builtinAgentTools: ConnectorTool[] = [
+  codeExperimentTool,
   {
     name: "generate_image",
     description:

@@ -1,0 +1,14 @@
+**
+!.cargo/
+!.cargo/**
+!core/
+!core/**
+!sdk/
+!sdk/js/
+!sdk/js/**
+core/target/
+core/docs/
+core/benchmark/
+core/tools/
+sdk/js/native/layerfs.node
+sdk/js/node_modules/

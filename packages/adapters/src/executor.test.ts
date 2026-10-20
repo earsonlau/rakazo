@@ -30,6 +30,25 @@ import { RetiredModelCredentialError, serializeModelSecret } from "./pi-oauth.js
 import { parseUpdateBotPatch } from "./update-bot-patch.js";
 
 describe("bot tool permissions", () => {
+  it("offers code experiments only when configured, enabled for the bot, and outside messaging channels", () => {
+    const options = {
+      graphicalToolsAllowed: false,
+      groupId: null,
+      trigger: "user",
+      semanticMemoryEnabled: false,
+      messagingChannelRun: false,
+    };
+    const names = (extra = {}) =>
+      selectBuiltinToolsForRun({ ...options, ...extra }).map((tool) => tool.name);
+    expect(names()).not.toContain("code_experiment");
+    expect(names({ codeExperimentsEnabled: true })).toContain("code_experiment");
+    expect(
+      names({ codeExperimentsEnabled: true, disabledBuiltinTools: ["code_experiment"] }),
+    ).not.toContain("code_experiment");
+    expect(names({ codeExperimentsEnabled: true, messagingChannelRun: true })).not.toContain(
+      "code_experiment",
+    );
+  });
   it("never lets self-edit change disabled tools alongside an allowed field", () => {
     expect(parseUpdateBotPatch({ name: "Scout", disabledBuiltinTools: [] }, "Bot")).toEqual({
       patch: { name: "Scout" },

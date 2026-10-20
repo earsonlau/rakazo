@@ -207,6 +207,12 @@ import { executeCloudAgentTool } from "./cloud-agent-service.js";
 import { validCloudAgentArgs } from "./cloud-agent-tools.js";
 import { selectCloudAgentTools } from "./cloud-agent-tools-select.js";
 import { cloudflareGatewayProviderEnv } from "./cloudflare-ai-gateway.js";
+import type { CodeExperimentConnection } from "./code-experiment-tools.js";
+import {
+  codeExperimentsEnabled,
+  executeCodeExperimentTool,
+  parseCodeExperimentRequest,
+} from "./code-experiment-tools.js";
 import type { PluginConnectionRow } from "./composio-connector.js";
 import {
   collectLogIds,
@@ -2722,6 +2728,7 @@ export interface ExecutorDeps {
   mcpAllowPrivateEndpoint?: boolean;
   /** Remote cloud coding agents. Null/omit means tools stay uninjected. */
   cloudAgent?: CloudAgentConnection | null;
+  codeExperiments?: CodeExperimentConnection | null;
   /** Optional Auto Review verifier. When omitted, the factory selects from env (llm | jev | scripted). */
   autoReview?: AutoReviewProvider;
   /**
@@ -4134,6 +4141,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             mediaImagesEnabled: Boolean(deps.artifacts && mediaGeneration?.capabilities.images),
             mediaVideoEnabled: Boolean(deps.artifacts && mediaGeneration?.capabilities.video),
             cloudAgentEnabled: cloudAgentsEnabled(cloudAgent, run.spaceId),
+            codeExperimentsEnabled: codeExperimentsEnabled(deps.codeExperiments, run),
             messagingChannelRun,
             voiceCall,
             disabledBuiltinTools: bot.disabledBuiltinTools,
@@ -4203,9 +4211,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           ? `${baseComputerInstruction} ${dockerToolInstruction}`
           : baseComputerInstruction;
         const workspaceInstruction =
-          computerMode === "team"
+          (computerMode === "team"
             ? `Your Team Computer home is ${teamBotWorkspaceDirectory(bot.id)}. Relative file paths and shell working directories start there. Put intentionally shared work under shared/. Other bots' folders are visible under bots/; treat them as their working areas.`
-            : "This entire computer workspace is your private home. Relative file paths and shell working directories start at its root.";
+            : "This entire computer workspace is your private home. Relative file paths and shell working directories start at its root.") +
+          (builtins.some((tool) => tool.name === "code_experiment")
+            ? " For isolated code experiments use code_experiment; ordinary shell and file tools do not access those experiments."
+            : "");
 
         let assembled = "";
         let currentTextSegment = "";
@@ -4408,6 +4419,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return pauseForApproval();
           if (disabledBuiltinTools.has(name)) {
             return { error: "This tool is disabled for this bot." };
+          }
+          if (name === "code_experiment") {
+            if (!codeExperimentsEnabled(deps.codeExperiments, run) || messagingChannelRun) {
+              return { error: "Code experiments are unavailable for this owner and space." };
+            }
+            try {
+              parseCodeExperimentRequest(args);
+            } catch (error) {
+              return {
+                error: error instanceof Error ? error.message : "Invalid experiment request",
+              };
+            }
           }
           if (PAGE_BROWSER_TOOL_NAMES.has(name) && !pageBrowserAllowed) {
             return { error: "Page browser is unavailable on this computer." };
@@ -5185,6 +5208,33 @@ export function createRunExecutor(deps: ExecutorDeps) {
               output: outcome.error ? redactSecrets(outcome.error, runSecrets) : "",
               ...(outcome.bytes === undefined ? {} : { bytes: outcome.bytes }),
             });
+          if (name === "code_experiment") {
+            const result = await executeCodeExperimentTool(
+              deps.codeExperiments,
+              {
+                ...context,
+                botId: bot.id,
+                operationId: effectKey,
+              },
+              args,
+              async (experiment, patch) => {
+                const patchPath = `experiments/${experiment}-${randomUUID()}.patch`;
+                const content = new TextEncoder().encode(patch);
+                workspaceCheckpoint.markDirty();
+                await deps.sandbox.writeFile(
+                  await runComputer.get(),
+                  {
+                    path: resolveBotWorkspacePath(computerMode, bot.id, patchPath),
+                    content,
+                  },
+                  context,
+                );
+                await recordComputerAction("write_file", patchPath, { bytes: content.byteLength });
+                return { path: patchPath, bytes: content.byteLength };
+              },
+            );
+            return finish(redactConnectorPayload(result, runSecrets));
+          }
           if (name === "computer_observe") {
             if (heldForTakeover) {
               return { error: DESKTOP_HELD_FOR_TAKEOVER_MESSAGE };
@@ -8247,6 +8297,7 @@ export function selectBuiltinToolsForRun(options: {
   trigger: string;
   semanticMemoryEnabled: boolean;
   cloudAgentEnabled?: boolean;
+  codeExperimentsEnabled?: boolean;
   mediaImagesEnabled?: boolean;
   mediaVideoEnabled?: boolean;
   messagingChannelRun: boolean;
@@ -8279,6 +8330,8 @@ export function selectBuiltinToolsForRun(options: {
   ).filter(
     (tool) =>
       !disabled.has(tool.name) &&
+      (tool.name !== "code_experiment" ||
+        (options.codeExperimentsEnabled && !options.messagingChannelRun)) &&
       (!FLEET_TOOL_NAMES_SET.has(tool.name) ||
         (Boolean(options.fleetManagement) && fleetToolsAllowed)) &&
       (options.mediaImagesEnabled || tool.name !== "generate_image") &&

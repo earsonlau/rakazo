@@ -24,6 +24,7 @@ import {
   ComposioConnector,
   createBackgroundJobHandlers,
   createCloudAgentConnection,
+  createCodeExperimentConnection,
   createConnectorStack,
   createJobReconciler,
   createMessagingContextLoader,
@@ -511,6 +512,7 @@ export async function createApp(
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
     cloudAgent,
+    codeExperiments: createCodeExperimentConnection(env.dataDir),
     shutdownSignal: shutdown.signal,
   });
 

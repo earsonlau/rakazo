@@ -11,6 +11,7 @@ import {
   CodexCatalogCache,
   createBackgroundJobHandlers,
   createCloudAgentConnection,
+  createCodeExperimentConnection,
   createConnectorStack,
   createJobReconciler,
   createMessagingContextLoader,
@@ -226,6 +227,7 @@ async function main() {
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
     cloudAgent,
+    codeExperiments: createCodeExperimentConnection(dataDir),
   });
 
   const jobHost: JobWorkerHost =

@@ -1,0 +1,23 @@
+# Two-agent experiment image: the real Rakazo API, worker and Pi runtime on top
+# of the real LayerFS v0.1.7 native runtime.
+#
+# Build the runtime first, then this image:
+#   docker build -f infra/experiments/layerfs/Dockerfile \
+#     -t rakazo-layerfs-native:v0.1.7 .tmp/layerfs-v017
+#   docker build -f infra/experiments/layerfs/Dockerfile.agents -t rakazo-layerfs-agents .
+FROM rakazo-layerfs-native:v0.1.7
+
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+COPY . .
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+  && pnpm --filter @rakazo/db exec prisma generate
+
+ENV AGENT_RUNTIME=pi \
+    SANDBOX_PROVIDER=fake \
+    WAKEUP_DRIVER=memory \
+    LAYERFS_SDK_MODULE=/opt/layerfs/sdk/js/src/index.js \
+    LAYERFS_DAEMON=/opt/layerfs/layerfs-daemon \
+    LAYERFS_HOME=/srv/layerfs-home \
+    LAYERFS_DOCKER=/var/run/docker.sock \
+    LAYERFS_CONSTRUCTION_WORKERS=1
