@@ -123,7 +123,8 @@ cd rakazo
 cp .env.example .env
 ```
 
-设置 `POSTGRES_PASSWORD`（例如使用 `openssl rand -hex 16` 生成），并将相同密码填入 `DATABASE_URL`。
+将 `POSTGRES_PASSWORD` 和 `POSTGRES_APP_PASSWORD` 分别设置为由 `openssl rand -hex 16` 生成的两个值，再把它们填入 `DATABASE_MIGRATION_URL` 和 `DATABASE_URL`。
+应用以自己的 `rakazo_app` 登录身份连接数据库，并受行级安全策略约束；迁移则以所有者身份运行（参见 [数据库角色](docs/self-host.md#database-roles)）。
 为 `BETTER_AUTH_SECRET`、`ENCRYPTION_KEY` 和 `SCREEN_PROXY_SECRET` 分别设置独立的长随机值。
 Docker 沙箱还需要专用的 `SANDBOX_SUPERVISOR_TOKEN`。
 你也可以设置 `OPENROUTER_API_KEY`，或在首次设置时连接支持的模型提供商。
@@ -155,7 +156,7 @@ pnpm dev
 
 默认 Compose 文件中的 Postgres 仅在容器网络内可访问，与已发布镜像的部署方式一致。
 `postgres-host` 叠加配置将数据库端口发布到宿主机的回环地址 `127.0.0.1:5433`，供宿主机上的 `pnpm` 和数据库工具使用。
-如果端口被占用，请同时修改 `.env` 中的 `POSTGRES_HOST_PORT` 和 `DATABASE_URL` 端口。
+如果端口被占用，请同时修改 `.env` 中的 `POSTGRES_HOST_PORT` 以及 `DATABASE_URL` 和 `DATABASE_MIGRATION_URL` 中的端口。
 不使用叠加配置时，可以通过以下命令进入数据库交互终端：
 `docker compose --env-file .env -f infra/compose/docker-compose.yml exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`。
 
@@ -208,6 +209,14 @@ pnpm --filter @rakazo/desktop dev
 公共服务器必须使用 HTTPS；只有回环地址和局域网私有地址允许 HTTP，不包括链路本地地址。
 应用会在保存地址前检查 Rakazo 的健康检查端点，之后启动时直接连接该实例。
 退出应用后，服务仍会继续运行；可通过应用菜单中的 **Stop Local Stack**（停止本地服务）将其关闭。
+
+在 Linux 上，桌面应用以 AppImage 形式发布，需要 FUSE 2（`libfuse.so.2`）。只包含 FUSE 3 的发行版（例如 Fedora Silverblue 或 Ubuntu 24.04）会报错
+`dlopen(): error loading libfuse.so.2`。请安装 FUSE 2 库（Fedora 上为 `fuse-libs`，Ubuntu 24.04 上为 `libfuse2t64`，较早的 Ubuntu 和 Debian 上为 `libfuse2`），或者不借助 FUSE 运行 AppImage：
+
+```bash
+chmod +x Rakazo-*.AppImage
+./Rakazo-*.AppImage --appimage-extract-and-run
+```
 
 使用应用菜单中的 **Change Rakazo Server…**（更换 Rakazo 服务器）重新选择服务器。
 关闭该窗口且不保存时，会返回之前的实例。
