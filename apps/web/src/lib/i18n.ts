@@ -1,5 +1,6 @@
 import { i18n } from "@lingui/core";
 import { applyUiDirection } from "./apply-ui-direction";
+import { importChunk } from "./preload-recovery";
 import { persistUiLocale, resolveUiLocale, type UiLocale } from "./ui-locale";
 
 export { i18n };
@@ -20,6 +21,7 @@ const defaultCatalogLoaders: Record<UiLocale, CatalogLoader> = {
   ru: () => import("../locales/ru/messages.po") as Promise<CatalogModule>,
   fr: () => import("../locales/fr/messages.po") as Promise<CatalogModule>,
   he: () => import("../locales/he/messages.po") as Promise<CatalogModule>,
+  nl: () => import("../locales/nl/messages.po") as Promise<CatalogModule>,
 };
 
 let catalogLoaders: Record<UiLocale, CatalogLoader> = defaultCatalogLoaders;
@@ -38,7 +40,7 @@ export function getActiveUiLocale(): UiLocale {
 }
 
 async function loadCatalog(locale: UiLocale): Promise<CatalogMessages> {
-  const { messages } = await catalogLoaders[locale]();
+  const { messages } = await importChunk(catalogLoaders[locale]);
   return messages;
 }
 

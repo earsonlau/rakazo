@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  appContract,
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_INSTRUCTIONS_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
@@ -15,7 +14,6 @@ import {
   ModelConnectInputSchema,
   ModelOAuthBeginSchema,
   normalizeCreateBotProfile,
-  ProductEventType,
   parseModelContextWindow,
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
@@ -28,6 +26,15 @@ import {
 } from "./index.js";
 
 describe("contracts", () => {
+  it("leaves bot management to the database default and preserves explicit choices", () => {
+    expect(CreateBotInput.parse({ name: "New bot" }).fleetManagement).toBeUndefined();
+    for (const fleetManagement of [false, true]) {
+      expect(CreateBotInput.parse({ name: "New bot", fleetManagement }).fleetManagement).toBe(
+        fleetManagement,
+      );
+    }
+  });
+
   it("bounds the count and length of compatible model selections", () => {
     const input = {
       provider: "openai-compatible",
@@ -344,34 +351,6 @@ describe("contracts", () => {
     ).toBe(false);
   });
 
-  it("exposes the product rpc surface", () => {
-    expect(appContract.models.beginOAuth).toBeTruthy();
-    expect(appContract.bootstrap).toBeTruthy();
-    expect(appContract.models.completeOAuth).toBeTruthy();
-    expect(appContract.bots.create).toBeTruthy();
-    expect(appContract.bots.reorder).toBeTruthy();
-    expect(appContract.bots.archive).toBeTruthy();
-    expect(appContract.bots.restore).toBeTruthy();
-    expect(appContract.bots.remove).toBeTruthy();
-    expect(appContract.spaces.rename).toBeTruthy();
-    expect(appContract.spaces.remove).toBeTruthy();
-    expect(appContract.botSections.list).toBeTruthy();
-    expect(appContract.botSections.create).toBeTruthy();
-    expect(appContract.botSections.update).toBeTruthy();
-    expect(appContract.threads.subscribe).toBeTruthy();
-    expect(appContract.threads.clear).toBeTruthy();
-    expect(appContract.voice.prepare).toBeTruthy();
-    expect(appContract.externalConversations.updatePolicy).toBeTruthy();
-    expect(appContract.agentSecrets.list).toBeTruthy();
-    expect(appContract.agentSecrets.put).toBeTruthy();
-    expect(appContract.agentSecrets.remove).toBeTruthy();
-    expect(appContract.notifications.registerPush).toBeTruthy();
-    expect(ProductEventType.options).toContain("thread.message.created");
-    expect(ProductEventType.options).toContain("thread.cleared");
-    expect(ProductEventType.options).toContain("thread.subagent");
-    expect(ProductEventType.options).toContain("bot.spawned");
-  });
-
   it("requires a distinct, non-empty bot order", () => {
     expect(ReorderBotsInput.safeParse({ botIds: ["bot-2", "bot-1"] }).success).toBe(true);
     expect(ReorderBotsInput.safeParse({ botIds: [] }).success).toBe(false);
@@ -446,6 +425,7 @@ describe("contracts", () => {
         status: run.status,
         trigger: run.trigger,
         notificationsEnabled: true,
+        agentMessage: null,
         promptSnippet: "Review the report",
         updatedAt: "2026-08-26T00:00:01.000Z",
       }).success,

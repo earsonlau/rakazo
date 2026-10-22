@@ -23,12 +23,29 @@ export function HostComputerPrompt({
 }) {
   const { t } = useLingui();
   const desktop = desktopBridge();
+  const [configuring, setConfiguring] = useState(false);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mac = desktop?.platform === "darwin";
   const hostLabel = mac ? t`this Mac` : t`this computer`;
+
+  useEffect(
+    () =>
+      desktop?.computer?.onConfigure(() => {
+        void rpc
+          .me()
+          .then((me) => {
+            if (me.canChooseHostComputer) {
+              setConfiguring(me.computerHost != null);
+              setOpen(true);
+            }
+          })
+          .catch(() => undefined);
+      }),
+    [desktop],
+  );
 
   useEffect(() => {
     if (!desktop) return;
@@ -66,7 +83,16 @@ export function HostComputerPrompt({
     setPending(true);
     setError(null);
     try {
-      await rpc.deployment.update({ computerHost });
+      if (!desktop?.computer?.managesHostChoice)
+        throw new Error(t`Local computer access requires the latest desktop app.`);
+      if (computerHost === "this-mac") {
+        if (!(await desktop.computer.requestAccess())) {
+          setPending(false);
+          return;
+        }
+      } else {
+        await desktop?.computer?.revokeAccess();
+      }
     } catch (err) {
       setError(errorText(err, t`Could not save that choice`));
       setPending(false);
@@ -86,8 +112,13 @@ export function HostComputerPrompt({
 
   // The choice is required, so the dialog stays open until one is saved.
   return (
-    <Dialog open>
-      <DialogContent showCloseButton={false} className="rounded-2xl p-6 sm:max-w-[440px]">
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (configuring) setOpen(next);
+      }}
+    >
+      <DialogContent showCloseButton={configuring} className="rounded-2xl p-6 sm:max-w-[440px]">
         <DialogHeader>
           <DialogTitle className="text-[22px]">
             <Trans>Where should bots run?</Trans>
