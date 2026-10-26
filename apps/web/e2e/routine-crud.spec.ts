@@ -23,11 +23,12 @@ test("a delayed schedule is visible only while the routine is active", async ({
     timezone: "UTC",
     active: false,
   });
+  let scheduleDelayed = true;
   await page.route("**/rpc/routines/list", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
     body.json = body.json.map((item: Routine) =>
-      item.id === routine.id ? { ...item, active: true, scheduleDelayed: true } : item,
+      item.id === routine.id ? { ...item, active: true, scheduleDelayed } : item,
     );
     await route.fulfill({ response, json: body });
   });
@@ -37,6 +38,14 @@ test("a delayed schedule is visible only while the routine is active", async ({
   const delay = page.getByRole("status").filter({ hasText: "Schedule delayed" });
   await expect(delay).toBeVisible();
   await captureScreenshot(page, testInfo, "routine-schedule-delayed");
+  const name = page.locator("label:has-text('Name') input");
+  await name.fill("Unsaved report name");
+  scheduleDelayed = false;
+  await expect(delay).toHaveCount(0, { timeout: 35_000 });
+  await expect(name).toHaveValue("Unsaved report name");
+  scheduleDelayed = true;
+  await expect(delay).toBeVisible({ timeout: 35_000 });
+  await expect(name).toHaveValue("Unsaved report name");
   await page.getByRole("switch", { name: "Active", exact: true }).click();
   await expect(delay).toHaveCount(0);
 });
