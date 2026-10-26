@@ -1,0 +1,100 @@
+name: Contribution preflight
+
+on:
+  push:
+    branches: [codex/contribution-preflight]
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REVISION: cdd0ea952b859df7af3a98829d5428b3592fd853
+
+jobs:
+  checks:
+    name: Full ${{ matrix.command }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        command: [lint, check, test, build]
+    env:
+      DATABASE_URL: postgres://rakazo:rakazo@127.0.0.1:5433/rakazo
+      BETTER_AUTH_SECRET: preflight-auth-secret-at-least-32-characters
+      ENCRYPTION_KEY: preflight-encryption-key-at-least-32-characters
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - name: Install encrypted-backup test dependency
+        if: matrix.command == 'test'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends age
+      - run: pnpm ${{ matrix.command }}
+      - name: Check catalog freshness
+        if: matrix.command == 'lint'
+        run: |
+          pnpm --filter @rakazo/web intl:extract
+          git diff --exit-code -- apps/web/src/locales
+      - name: Host-operation safety checks
+        if: matrix.command == 'test'
+        run: |
+          python3 infra/compose/host-safeguards.test.py
+          python3 .github/scripts/codex-subscription-auth.test.py
+          python3 .github/scripts/dependency-update-patch.test.py
+
+  integration:
+    name: Full Postgres integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:integration
+
+  e2e:
+    name: Full Web E2E (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @rakazo/web exec playwright install chromium
+      - run: pnpm test:e2e -- --sandbox=fake --shard=${{ matrix.shard }}/4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preflight-e2e-${{ matrix.shard }}
+          path: |
+            apps/web/test-results
+            blob-report
+          if-no-files-found: warn
+          retention-days: 7
