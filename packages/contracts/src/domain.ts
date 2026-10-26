@@ -503,6 +503,8 @@ export const RoutineSchema = z.object({
   watchState: RoutineWatchStateSchema.nullable(),
   lastRunAt: z.string().nullable(),
   nextRunAt: z.string().nullable(),
+  /** Computed by the server; absent on older servers. Not a worker-health diagnosis. */
+  scheduleDelayed: z.boolean().optional(),
   createdAt: z.string(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;

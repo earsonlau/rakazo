@@ -467,6 +467,12 @@ export function RoutineEditor({
         </div>
       </div>
 
+      {draft.active && editing?.scheduleDelayed ? (
+        <p role="status" className="mb-5 text-sm text-muted-foreground">
+          <Trans>Schedule delayed</Trans>
+        </p>
+      ) : null}
+
       <label htmlFor={`${fieldId}-name`} className="block text-sm text-muted-foreground">
         <Trans>Name</Trans>
         <Input
