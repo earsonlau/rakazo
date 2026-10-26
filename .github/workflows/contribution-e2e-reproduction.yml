@@ -1,0 +1,35 @@
+name: Reproduce header-hit E2E
+on:
+  push:
+    branches: [codex/e2e-reproduction]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [4e7e6965, 8009d177]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.revision }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @rakazo/web exec playwright install chromium
+      - run: pnpm test:e2e -- --sandbox=fake --grep='message hover shows beside-bubble actions'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: header-hit-${{ matrix.revision }}
+          path: |
+            apps/web/test-results
+            blob-report
+          retention-days: 7
