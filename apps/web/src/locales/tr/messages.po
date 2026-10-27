@@ -633,6 +633,7 @@ msgstr ""
 msgid "All time"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Allow"
 msgstr "İzin ver"
@@ -648,6 +649,10 @@ msgstr ""
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "Bir kez izin ver"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Allow rule"
+msgstr "İzin kuralı"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -819,6 +824,10 @@ msgstr ""
 msgid "Ask"
 msgstr "Sor"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Ask rule"
+msgstr "Onay kuralı"
+
 #. placeholder {0}: preset.time
 #: src/lib/cron.ts
 msgid "at {0}"
@@ -934,9 +943,14 @@ msgstr "Bearer token"
 msgid "Billing"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Block"
 msgstr "Engelle"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Block rule"
+msgstr "Engelleme kuralı"
 
 #: src/lib/ticket-status.ts
 msgid "Blocked"
@@ -1101,6 +1115,10 @@ msgstr "iptal edildi"
 #: src/pages/ActivityList.tsx
 msgid "Cancelled"
 msgstr "İptal edildi"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Candidate rule"
+msgstr "Önerilen kural"
 
 #: src/pages/Artifacts.tsx
 msgid "Card view"
@@ -1906,6 +1924,10 @@ msgstr ""
 msgid "Could not play a test clip"
 msgstr "Deneme sesi çalınamadı"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Could not preview rule"
+msgstr "Kural önizlenemedi"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Could not reach the model server."
 msgstr "Model sunucusuna ulaşılamadı."
@@ -2185,6 +2207,10 @@ msgstr "Cron"
 #: src/pages/RoutineSchedule.tsx
 msgid "Cron expression"
 msgstr "Cron ifadesi"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Current"
+msgstr "Mevcut"
 
 #: src/components/AccountAccess.tsx
 #: src/pages/AccountSettingsOverlay.tsx
@@ -3799,6 +3825,10 @@ msgstr ""
 msgid "No matching models"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "No matching rule"
+msgstr "Eşleşen kural yok"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "Henüz MCP veya API araç kaynağı kurulmadı."
@@ -4226,6 +4256,11 @@ msgstr ""
 msgid "Preferences"
 msgstr "Tercihler"
 
+#: src/components/ApprovalRulePreview.tsx
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Preview"
+msgstr "Önizleme"
+
 #. placeholder {0}: props.name
 #: src/components/ArtifactFileCard.tsx
 msgid "Preview {0}"
@@ -4426,6 +4461,7 @@ msgstr "Kontrolü bırak"
 msgid "Reload"
 msgstr "Yeniden yükle"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 #: src/components/VaultSettings.tsx
 #: src/pages/McpServersOverlay.tsx
@@ -4681,6 +4717,10 @@ msgstr ""
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "Satır"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Rule matching only. Runtime safety checks still apply."
+msgstr "Yalnızca kural eşleştirmesi. Çalışma zamanı güvenlik kontrolleri geçerliliğini korur."
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -5362,6 +5402,10 @@ msgstr "API anahtarını test et"
 msgid "Test connection"
 msgstr "Bağlantıyı test et"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Test rule"
+msgstr "Kuralı dene"
+
 #: src/pages/RoutineEditor.tsx
 msgid "Test run"
 msgstr ""
@@ -5631,6 +5675,7 @@ msgstr "Araç bağımsız değişkenleri bir JSON nesnesi olmalıdır"
 msgid "Tool arguments must be JSON"
 msgstr "Araç bağımsız değişkenleri JSON olmalıdır"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/pages/RoutineEditor.tsx
 msgid "Tool name"
 msgstr "Araç adı"

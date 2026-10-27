@@ -1141,4 +1141,16 @@ export const RU_MESSAGES: Record<string, string> = {
   "Copy username": "Скопировать имя пользователя",
   "Copy password": "Скопировать пароль",
   "Could not show the credential": "Не удалось показать учетные данные",
+  "Allow rule": "Правило разрешения",
+  "Ask rule": "Правило подтверждения",
+  "Block rule": "Правило блокировки",
+  "Candidate rule": "Предлагаемое правило",
+  "Could not preview rule": "Не удалось проверить правило",
+  Current: "Сейчас",
+  "No matching rule": "Нет подходящего правила",
+  Preview: "Предпросмотр",
+  "Rule matching only. Runtime safety checks still apply.":
+    "Только сопоставление правил. Проверки безопасности при выполнении сохраняются.",
+  "Test rule": "Проверить правило",
+  "Tool name": "Название инструмента",
 };

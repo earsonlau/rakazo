@@ -1098,4 +1098,16 @@ export const ZH_MESSAGES: Record<string, string> = {
   "Copy username": "复制用户名",
   "Copy password": "复制密码",
   "Could not show the credential": "无法显示凭据",
+  "Allow rule": "允许规则",
+  "Ask rule": "审批规则",
+  "Block rule": "禁止规则",
+  "Candidate rule": "候选规则",
+  "Could not preview rule": "无法预览规则",
+  Current: "当前",
+  "No matching rule": "未匹配规则",
+  Preview: "预览",
+  "Rule matching only. Runtime safety checks still apply.":
+    "仅检查规则匹配，执行时仍会进行安全检查。",
+  "Test rule": "测试规则",
+  "Tool name": "工具名",
 };

@@ -633,6 +633,7 @@ msgstr ""
 msgid "All time"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Allow"
 msgstr "허용"
@@ -648,6 +649,10 @@ msgstr ""
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "한 번 허용"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Allow rule"
+msgstr "허용 규칙"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -819,6 +824,10 @@ msgstr ""
 msgid "Ask"
 msgstr "묻기"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Ask rule"
+msgstr "승인 규칙"
+
 #. placeholder {0}: preset.time
 #: src/lib/cron.ts
 msgid "at {0}"
@@ -934,9 +943,14 @@ msgstr "Bearer 토큰"
 msgid "Billing"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Block"
 msgstr "차단"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Block rule"
+msgstr "차단 규칙"
 
 #: src/lib/ticket-status.ts
 msgid "Blocked"
@@ -1101,6 +1115,10 @@ msgstr "취소됨"
 #: src/pages/ActivityList.tsx
 msgid "Cancelled"
 msgstr "취소됨"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Candidate rule"
+msgstr "변경할 규칙"
 
 #: src/pages/Artifacts.tsx
 msgid "Card view"
@@ -1906,6 +1924,10 @@ msgstr ""
 msgid "Could not play a test clip"
 msgstr "샘플 음성을 재생하지 못했습니다."
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Could not preview rule"
+msgstr "규칙을 미리 볼 수 없습니다"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Could not reach the model server."
 msgstr "모델 서버에 연결하지 못했습니다."
@@ -2185,6 +2207,10 @@ msgstr "Cron"
 #: src/pages/RoutineSchedule.tsx
 msgid "Cron expression"
 msgstr "Cron 표현식"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Current"
+msgstr "현재"
 
 #: src/components/AccountAccess.tsx
 #: src/pages/AccountSettingsOverlay.tsx
@@ -3799,6 +3825,10 @@ msgstr ""
 msgid "No matching models"
 msgstr "일치하는 모델 없음"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "No matching rule"
+msgstr "일치하는 규칙 없음"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "아직 추가된 MCP 또는 API 도구가 없습니다."
@@ -4226,6 +4256,11 @@ msgstr "POST 대상"
 msgid "Preferences"
 msgstr "환경설정"
 
+#: src/components/ApprovalRulePreview.tsx
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Preview"
+msgstr "미리 보기"
+
 #. placeholder {0}: props.name
 #: src/components/ArtifactFileCard.tsx
 msgid "Preview {0}"
@@ -4426,6 +4461,7 @@ msgstr "제어권 넘기기"
 msgid "Reload"
 msgstr "새로고침"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 #: src/components/VaultSettings.tsx
 #: src/pages/McpServersOverlay.tsx
@@ -4681,6 +4717,10 @@ msgstr ""
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "행"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Rule matching only. Runtime safety checks still apply."
+msgstr "규칙 일치만 확인합니다. 실행 시 안전 검사는 계속 적용됩니다."
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -5362,6 +5402,10 @@ msgstr "API 키 테스트"
 msgid "Test connection"
 msgstr "연결 테스트"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Test rule"
+msgstr "규칙 테스트"
+
 #: src/pages/RoutineEditor.tsx
 msgid "Test run"
 msgstr "테스트 실행"
@@ -5631,6 +5675,7 @@ msgstr "도구 인수는 JSON 객체여야 합니다"
 msgid "Tool arguments must be JSON"
 msgstr "도구 인수는 JSON이어야 합니다"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/pages/RoutineEditor.tsx
 msgid "Tool name"
 msgstr "도구 이름"

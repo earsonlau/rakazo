@@ -1117,4 +1117,16 @@ export const ZH_TW_MESSAGES: Record<string, string> = {
   "Copy username": "複製使用者名稱",
   "Copy password": "複製密碼",
   "Could not show the credential": "無法顯示憑證",
+  "Allow rule": "允許規則",
+  "Ask rule": "審批規則",
+  "Block rule": "禁止規則",
+  "Candidate rule": "候選規則",
+  "Could not preview rule": "無法預覽規則",
+  Current: "目前",
+  "No matching rule": "未匹配規則",
+  Preview: "預覽",
+  "Rule matching only. Runtime safety checks still apply.":
+    "僅檢查規則匹配，執行時仍會進行安全檢查。",
+  "Test rule": "測試規則",
+  "Tool name": "工具名稱",
 };

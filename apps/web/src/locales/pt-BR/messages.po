@@ -633,6 +633,7 @@ msgstr ""
 msgid "All time"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Allow"
 msgstr "Permitir"
@@ -648,6 +649,10 @@ msgstr ""
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "Permitir uma vez"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Allow rule"
+msgstr "Regra de permissão"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -819,6 +824,10 @@ msgstr ""
 msgid "Ask"
 msgstr "Perguntar"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Ask rule"
+msgstr "Regra de aprovação"
+
 #. placeholder {0}: preset.time
 #: src/lib/cron.ts
 msgid "at {0}"
@@ -934,9 +943,14 @@ msgstr "Token portador"
 msgid "Billing"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Block"
 msgstr "Bloquear"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Block rule"
+msgstr "Regra de bloqueio"
 
 #: src/lib/ticket-status.ts
 msgid "Blocked"
@@ -1101,6 +1115,10 @@ msgstr "cancelado"
 #: src/pages/ActivityList.tsx
 msgid "Cancelled"
 msgstr "Cancelado"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Candidate rule"
+msgstr "Regra proposta"
 
 #: src/pages/Artifacts.tsx
 msgid "Card view"
@@ -1906,6 +1924,10 @@ msgstr ""
 msgid "Could not play a test clip"
 msgstr "Não foi possível reproduzir um clipe de teste"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Could not preview rule"
+msgstr "Não foi possível visualizar a regra"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Could not reach the model server."
 msgstr "Não foi possível acessar o servidor do modelo."
@@ -2185,6 +2207,10 @@ msgstr "Cron"
 #: src/pages/RoutineSchedule.tsx
 msgid "Cron expression"
 msgstr "Expressão cron"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Current"
+msgstr "Atual"
 
 #: src/components/AccountAccess.tsx
 #: src/pages/AccountSettingsOverlay.tsx
@@ -3799,6 +3825,10 @@ msgstr ""
 msgid "No matching models"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "No matching rule"
+msgstr "Nenhuma regra correspondente"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "Nenhuma fonte de ferramenta MCP ou API instalada ainda."
@@ -4226,6 +4256,11 @@ msgstr ""
 msgid "Preferences"
 msgstr "Preferências"
 
+#: src/components/ApprovalRulePreview.tsx
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Preview"
+msgstr "Prévia"
+
 #. placeholder {0}: props.name
 #: src/components/ArtifactFileCard.tsx
 msgid "Preview {0}"
@@ -4426,6 +4461,7 @@ msgstr "Liberar o controle"
 msgid "Reload"
 msgstr "Recarregar"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 #: src/components/VaultSettings.tsx
 #: src/pages/McpServersOverlay.tsx
@@ -4681,6 +4717,10 @@ msgstr ""
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "Linha"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Rule matching only. Runtime safety checks still apply."
+msgstr "Apenas correspondência de regras. As verificações de segurança na execução continuam válidas."
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -5362,6 +5402,10 @@ msgstr "Testar chave de API"
 msgid "Test connection"
 msgstr "Testar conexão"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Test rule"
+msgstr "Testar regra"
+
 #: src/pages/RoutineEditor.tsx
 msgid "Test run"
 msgstr ""
@@ -5631,6 +5675,7 @@ msgstr "Os argumentos devem ser um objeto JSON"
 msgid "Tool arguments must be JSON"
 msgstr "Os argumentos devem ser JSON"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/pages/RoutineEditor.tsx
 msgid "Tool name"
 msgstr "Nome da ferramenta"

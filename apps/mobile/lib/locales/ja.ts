@@ -1132,4 +1132,16 @@ export const JA_MESSAGES: Record<string, string> = {
   "Copy username": "ユーザー名をコピー",
   "Copy password": "パスワードをコピー",
   "Could not show the credential": "認証情報を表示できませんでした",
+  "Allow rule": "許可ルール",
+  "Ask rule": "確認ルール",
+  "Block rule": "ブロックルール",
+  "Candidate rule": "変更案",
+  "Could not preview rule": "ルールをプレビューできませんでした",
+  Current: "現在",
+  "No matching rule": "一致するルールなし",
+  Preview: "プレビュー",
+  "Rule matching only. Runtime safety checks still apply.":
+    "ルールの照合のみです。実行時の安全確認は引き続き適用されます。",
+  "Test rule": "ルールを試す",
+  "Tool name": "ツール名",
 };

@@ -633,6 +633,7 @@ msgstr "כל הסטטוסים"
 msgid "All time"
 msgstr "כל הזמנים"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Allow"
 msgstr "לאפשר"
@@ -648,6 +649,10 @@ msgstr ""
 #: src/components/AskCard.tsx
 msgid "Allow once"
 msgstr "אישור חד-פעמי"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Allow rule"
+msgstr "כלל הרשאה"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
@@ -819,6 +824,10 @@ msgstr "תוצרים"
 msgid "Ask"
 msgstr "לשאול"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Ask rule"
+msgstr "כלל אישור"
+
 #. placeholder {0}: preset.time
 #: src/lib/cron.ts
 msgid "at {0}"
@@ -934,9 +943,14 @@ msgstr "Bearer token"
 msgid "Billing"
 msgstr "חיוב"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Block"
 msgstr "לחסום"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Block rule"
+msgstr "כלל חסימה"
 
 #: src/lib/ticket-status.ts
 msgid "Blocked"
@@ -1101,6 +1115,10 @@ msgstr "בוטל"
 #: src/pages/ActivityList.tsx
 msgid "Cancelled"
 msgstr "בוטל"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Candidate rule"
+msgstr "כלל מוצע"
 
 #: src/pages/Artifacts.tsx
 msgid "Card view"
@@ -1906,6 +1924,10 @@ msgstr "לא ניתן לפתוח את החיוב"
 msgid "Could not play a test clip"
 msgstr "לא ניתן להשמיע קטע בדיקה"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Could not preview rule"
+msgstr "לא ניתן להציג תצוגה מקדימה של הכלל"
+
 #: src/lib/model-connection-preflight.ts
 msgid "Could not reach the model server."
 msgstr "אין גישה לשרת המודל."
@@ -2185,6 +2207,10 @@ msgstr "Cron"
 #: src/pages/RoutineSchedule.tsx
 msgid "Cron expression"
 msgstr "ביטוי Cron"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Current"
+msgstr "נוכחי"
 
 #: src/components/AccountAccess.tsx
 #: src/pages/AccountSettingsOverlay.tsx
@@ -3799,6 +3825,10 @@ msgstr "אין תוצרים תואמים בדף הזה."
 msgid "No matching models"
 msgstr "אין מודלים תואמים"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "No matching rule"
+msgstr "אין כלל תואם"
+
 #: src/pages/PluginsOverlay.tsx
 msgid "No MCP or API tool sources installed yet."
 msgstr "עדיין לא הותקנו מקורות כלים של MCP או API."
@@ -4226,6 +4256,11 @@ msgstr "POST אל"
 msgid "Preferences"
 msgstr "העדפות"
 
+#: src/components/ApprovalRulePreview.tsx
+#: src/components/ApprovalRulesSettings.tsx
+msgid "Preview"
+msgstr "תצוגה מקדימה"
+
 #. placeholder {0}: props.name
 #: src/components/ArtifactFileCard.tsx
 msgid "Preview {0}"
@@ -4426,6 +4461,7 @@ msgstr "שחרור השליטה"
 msgid "Reload"
 msgstr "טעינה מחדש"
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/components/ApprovalRulesSettings.tsx
 #: src/components/VaultSettings.tsx
 #: src/pages/McpServersOverlay.tsx
@@ -4681,6 +4717,10 @@ msgstr "רוטינות שרצות גם כשלא נמצאים"
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "שורה"
+
+#: src/components/ApprovalRulePreview.tsx
+msgid "Rule matching only. Runtime safety checks still apply."
+msgstr "התאמת כללים בלבד. בדיקות הבטיחות בזמן הריצה עדיין חלות."
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -5362,6 +5402,10 @@ msgstr "בדיקת מפתח API"
 msgid "Test connection"
 msgstr "בדיקת חיבור"
 
+#: src/components/ApprovalRulePreview.tsx
+msgid "Test rule"
+msgstr "בדיקת כלל"
+
 #: src/pages/RoutineEditor.tsx
 msgid "Test run"
 msgstr "הרצת בדיקה"
@@ -5631,9 +5675,10 @@ msgstr ""
 msgid "Tool arguments must be JSON"
 msgstr ""
 
+#: src/components/ApprovalRulePreview.tsx
 #: src/pages/RoutineEditor.tsx
 msgid "Tool name"
-msgstr ""
+msgstr "שם הכלי"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Tool sources"

@@ -1148,4 +1148,16 @@ export const DE_MESSAGES: Record<string, string> = {
   "Copy username": "Benutzernamen kopieren",
   "Copy password": "Passwort kopieren",
   "Could not show the credential": "Zugangsdaten konnten nicht angezeigt werden",
+  "Allow rule": "Erlaubnisregel",
+  "Ask rule": "Nachfrageregel",
+  "Block rule": "Sperrregel",
+  "Candidate rule": "Vorgeschlagene Regel",
+  "Could not preview rule": "Regelvorschau fehlgeschlagen",
+  Current: "Aktuell",
+  "No matching rule": "Keine passende Regel",
+  Preview: "Vorschau",
+  "Rule matching only. Runtime safety checks still apply.":
+    "Nur Regelabgleich. Sicherheitsprüfungen zur Laufzeit gelten weiterhin.",
+  "Test rule": "Regel testen",
+  "Tool name": "Werkzeugname",
 };

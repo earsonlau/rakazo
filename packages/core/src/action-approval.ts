@@ -433,6 +433,28 @@ export function resolveActionApprovalForTools(input: {
   return { decision: "allow", source: allAllowed ? "always_allow" : "default", matchingRules };
 }
 
+/** Only rule matching, not runtime authorization or an approval-model prediction. */
+export function previewActionApprovalRule(
+  rules: ActionApprovalRule[],
+  rule: ActionApprovalRule,
+  effect: "always_allow" | "deny" | "remove",
+  sample: Omit<Parameters<typeof resolveActionApprovalForTools>[0], "rules">,
+) {
+  const remaining = rules.filter(
+    (other) =>
+      other.matchKind !== rule.matchKind ||
+      other.matchValue.toLowerCase() !== rule.matchValue.toLowerCase(),
+  );
+  const next =
+    effect === "remove"
+      ? rules.filter((other) => other !== rule)
+      : [...remaining, { ...rule, effect }];
+  return {
+    before: resolveActionApprovalForTools({ ...sample, rules }).source,
+    after: resolveActionApprovalForTools({ ...sample, rules: next }).source,
+  };
+}
+
 /**
  * How much a space asks before acting. `never` runs everything without waiting, `auto` lets the approval model pass what
  * fits the owner's request, and `ask` asks before anything that changes something.

@@ -1100,4 +1100,16 @@ export const NL_MESSAGES: Record<string, string> = {
   "Copy username": "Gebruikersnaam kopiëren",
   "Copy password": "Wachtwoord kopiëren",
   "Could not show the credential": "De gegevens tonen mislukt",
+  "Allow rule": "Toestaanregel",
+  "Ask rule": "Goedkeuringsregel",
+  "Block rule": "Blokkeerregel",
+  "Candidate rule": "Voorgestelde regel",
+  "Could not preview rule": "Regelvoorbeeld kon niet worden geladen",
+  Current: "Huidig",
+  "No matching rule": "Geen overeenkomende regel",
+  Preview: "Voorbeeld",
+  "Rule matching only. Runtime safety checks still apply.":
+    "Alleen regelvergelijking. Veiligheidscontroles bij uitvoering blijven gelden.",
+  "Test rule": "Regel testen",
+  "Tool name": "Toolnaam",
 };
