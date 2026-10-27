@@ -12,6 +12,7 @@ import {
   connectorKindFromToolName,
   connectorReadRequiresApproval,
   connectorToolRequiresApproval,
+  decisiveActionApprovalRules,
   displayName,
   newSiteOutcome,
   outboundSiteGate,
@@ -281,11 +282,18 @@ export async function gateToolCall(
           newDestination: siteGate === "new",
         });
   if (plan === "deny") {
+    const ruleReason = savedRuleReason(approvalResolved);
     return {
       result: {
         error:
           approvalResolved.decision === "deny"
-            ? `${name} is blocked in this space. Don't try it another way; tell the user it's blocked.`
+            ? [
+                `${name} is blocked in this space.`,
+                ruleReason,
+                "Don't try it another way; tell the user it's blocked.",
+              ]
+                .filter(Boolean)
+                .join(" ")
             : `${name} needs the owner's approval because it could have been asked for by someone else, and this space never asks. Don't retry; tell the user.`,
       },
     };
@@ -402,7 +410,11 @@ export async function gateToolCall(
     nextApprovedTool,
     bypassApproval: gateDecision === "allow" && gated,
   });
-  const card = { reviewReason, summary: request.fleetSummary };
+  const card = {
+    reviewReason:
+      [reviewReason, savedRuleReason(approvalResolved)].filter(Boolean).join("\n") || undefined,
+    summary: request.fleetSummary,
+  };
 
   if (applied?.duplicate) {
     const gate = resolveDuplicateEffectGate(applied.effect, name);
@@ -480,6 +492,18 @@ export async function gateToolCall(
     for (const trust of connectorTrusts) trusted.add(trust);
   }
   return { call };
+}
+
+function savedRuleReason(
+  resolved: ReturnType<typeof resolveActionApprovalForTools>,
+): string | undefined {
+  const rules = decisiveActionApprovalRules(resolved);
+  if (rules.length === 0) return undefined;
+  const action = resolved.source === "deny" ? "block" : "ask before";
+  const targets = rules.map(
+    (rule) => `${rule.matchKind} "${rule.matchValue.trim().replace(/\s+/g, " ") || "this action"}"`,
+  );
+  return `Saved rule: ${action} ${targets.join(", ")}.`;
 }
 
 function createToolCall(

@@ -779,6 +779,15 @@ describe("connector read-only metadata and approval enforcement", () => {
       expect(f.execute).not.toHaveBeenCalled();
       expect(f.effects).toHaveLength(1);
       expect(f.pauseRunForInput).toHaveBeenCalledOnce();
+      expect(f.pauseRunForInput).toHaveBeenCalledWith(
+        expect.objectContaining({
+          blocks: [
+            expect.objectContaining({
+              detail: expect.stringContaining('Saved rule: ask before tool "demo_get_item".'),
+            }),
+          ],
+        }),
+      );
     });
 
     it("replays the approved arguments once and returns the result on retry", async () => {
@@ -964,6 +973,7 @@ describe("connector read-only metadata and approval enforcement", () => {
       await f.run();
       expect(f.execute).not.toHaveBeenCalled();
       expect(f.pauseRunForInput).toHaveBeenCalledOnce();
+      expect(JSON.stringify(f.pauseRunForInput.mock.calls[0])).not.toContain("Saved rule:");
     });
 
     it("forces owner approval for webhook-triggered writes despite an allow rule", async () => {
@@ -2483,6 +2493,9 @@ describe("user_computer_shell", () => {
     f.setCalls([call("ls")]);
     await f.run();
     expect(f.results[0]).toEqual({ error: expect.stringContaining("is blocked in this space") });
+    expect(f.results[0]).toEqual({
+      error: expect.stringContaining('Saved rule: block tool "user_computer_shell".'),
+    });
     expect(f.pauseRunForInput).not.toHaveBeenCalled();
   });
 
