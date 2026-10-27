@@ -36,7 +36,7 @@ export function ApprovalRulePreview({
           : t`No matching rule`;
   return (
     <form
-      className="space-y-3 py-3"
+      className="space-y-3 px-4 pb-4"
       onSubmit={async (event) => {
         event.preventDefault();
         if (pending) return;
