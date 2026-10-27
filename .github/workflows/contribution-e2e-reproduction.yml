@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        revision: [4e7e6965, 8009d177]
+        revision: [4e7e69650596d095e6b27282bef8c99090c42334, 8009d177854dd252901bfa16348de26db4545ecc]
     steps:
       - uses: actions/checkout@v5
         with:
