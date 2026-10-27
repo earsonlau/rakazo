@@ -2484,6 +2484,32 @@ describe("user_computer_shell", () => {
     expect(f.effects.map((effect) => effect.status)).toEqual(["completed", "completed"]);
   });
 
+  it("names an ask rule on the computer approval card", async () => {
+    const f = fixture({
+      ...ownRun,
+      userDevices: devices().gateway,
+      rules: [
+        {
+          effect: "require_approval",
+          matchKind: "tool",
+          matchValue: "user_computer_shell",
+        },
+      ],
+    });
+    f.setCalls([call("ssh pi.local hostname")]);
+    await f.run();
+    expect(f.pauseRunForInput).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blocks: [
+          expect.objectContaining({
+            kind: "ask",
+            detail: 'Saved rule: ask before tool "user_computer_shell".\n\nssh pi.local hostname',
+          }),
+        ],
+      }),
+    );
+  });
+
   it("refuses with a block rule", async () => {
     const f = fixture({
       ...ownRun,

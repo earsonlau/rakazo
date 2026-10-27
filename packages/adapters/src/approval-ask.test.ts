@@ -99,6 +99,26 @@ it("shows the full instruction replacement as a diff with Apply and Dismiss", ()
   });
 });
 
+it("shows the saved rule reason before an instruction diff", () => {
+  const block = buildApprovalAskBlock(
+    "effect-1",
+    "propose_instructions_update",
+    {
+      botId: "bot-1",
+      previousInstructions: "Draft only",
+      instructions: "Draft only\nAsk before sending",
+      reason: "Learned preference",
+    },
+    [],
+    { reviewReason: 'Saved rule: ask before tool "propose_instructions_update".' },
+  );
+  expect(block).toMatchObject({
+    kind: "ask",
+    detail:
+      'Saved rule: ask before tool "propose_instructions_update".\n\nLearned preference\n\n- Draft only\n+ Draft only\n+ Ask before sending',
+  });
+});
+
 it("redacts known secrets in instruction approval details and editable metadata", () => {
   const block = buildApprovalAskBlock(
     "effect-1",
@@ -167,6 +187,20 @@ describe("bot management approval cards", () => {
     if (block.kind !== "ask") throw new Error("expected ask block");
     expect(block.actions?.map((action) => action.id)).toEqual(["allow", "deny"]);
   });
+
+  it("shows the saved rule reason before resolved fleet details", () => {
+    const block = buildApprovalAskBlock("effect-1", "create_group", {}, [], {
+      reviewReason: 'Saved rule: ask before tool "create_group".',
+      summary: {
+        title: "Create group “Launch”?",
+        lines: ["Members: Scout, Writer"],
+      },
+    });
+    expect(block).toMatchObject({
+      kind: "ask",
+      detail: 'Saved rule: ask before tool "create_group".\n\nMembers: Scout, Writer',
+    });
+  });
 });
 
 describe("agent connection response cards", () => {
@@ -210,6 +244,42 @@ describe("agent connection response cards", () => {
     expect(block).toMatchObject({
       text: "Approve connection with “\\*\\*Helper\\*\\* Approve all”?",
       detail: "Slack: [redacted]",
+    });
+  });
+
+  it("shows the saved rule reason before the requester address", () => {
+    const block = buildApprovalAskBlock(
+      "effect-1",
+      "respond_agent_connection",
+      {
+        accept: true,
+        requester_name: "Helper",
+        requester_address: "+15551234567",
+        requester_provider: "sendblue",
+      },
+      [],
+      { reviewReason: 'Saved rule: ask before tool "respond_agent_connection".' },
+    );
+    expect(block).toMatchObject({
+      kind: "ask",
+      detail: 'Saved rule: ask before tool "respond_agent_connection".\n\niMessage: +15551234567',
+    });
+  });
+});
+
+describe("user computer approval cards", () => {
+  it("shows the saved rule reason before the command", () => {
+    const block = buildApprovalAskBlock(
+      "effect-1",
+      "user_computer_shell",
+      { cwd: "/Users/fake", command: "ssh pi.local hostname" },
+      [],
+      { reviewReason: 'Saved rule: ask before tool "user_computer_shell".' },
+    );
+    expect(block).toMatchObject({
+      kind: "ask",
+      detail:
+        'Saved rule: ask before tool "user_computer_shell".\n\ncd /Users/fake\nssh pi.local hostname',
     });
   });
 });

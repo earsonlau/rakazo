@@ -43,7 +43,10 @@ export function buildApprovalAskBlock(
       approvalEffectId: effectId,
       text: truncate(redactSecrets(options.summary.title, secrets), MAX_APPROVAL_SUMMARY_LENGTH),
       detail: truncate(
-        redactSecrets(options.summary.lines.join("\n"), secrets),
+        redactSecrets(
+          withReviewReason(options.reviewReason, options.summary.lines.join("\n")),
+          secrets,
+        ),
         approvalDetailLength(toolName),
       ),
       detailFormat: toolName === "set_child_instructions" ? "code" : "text",
@@ -66,9 +69,15 @@ export function buildApprovalAskBlock(
         `${args.accept === true ? "Approve" : "Decline"} connection with “${name}”?`,
         secrets,
       ),
-      detail: redactSecrets(
-        `${messagingProviderName(String(args.requester_provider ?? ""))}: ${String(args.requester_address ?? "").replace(/[\r\n]/g, " ")}`,
-        secrets,
+      detail: truncate(
+        redactSecrets(
+          withReviewReason(
+            options?.reviewReason,
+            `${messagingProviderName(String(args.requester_provider ?? ""))}: ${String(args.requester_address ?? "").replace(/[\r\n]/g, " ")}`,
+          ),
+          secrets,
+        ),
+        MAX_APPROVAL_DETAIL_LENGTH,
       ),
       detailFormat: "text",
       status: "pending",
@@ -86,7 +95,13 @@ export function buildApprovalAskBlock(
       kind: "ask",
       approvalEffectId: effectId,
       text: "Update instructions?",
-      detail: instructionUpdateDiff(before, after, reason),
+      detail: truncate(
+        redactSecrets(
+          withReviewReason(options?.reviewReason, instructionUpdateDiff(before, after, reason)),
+          secrets,
+        ),
+        MAX_APPROVAL_DETAIL_LENGTH,
+      ),
       instructionUpdate: {
         botId: String(args.botId ?? ""),
         before,
@@ -108,7 +123,10 @@ export function buildApprovalAskBlock(
       approvalEffectId: effectId,
       text: "Run on your computer?",
       detail: truncate(
-        redactSecrets(`${cwd}${String(args.command ?? "")}`, secrets),
+        redactSecrets(
+          withReviewReason(options?.reviewReason, `${cwd}${String(args.command ?? "")}`),
+          secrets,
+        ),
         MAX_APPROVAL_DETAIL_LENGTH,
       ),
       detailFormat: "code",
@@ -216,6 +234,11 @@ function formatApprovalDetail(
   }
   if (lines.length === 0) return undefined;
   return lines.join("\n");
+}
+
+function withReviewReason(reviewReason: string | undefined, detail: string): string {
+  const reason = reviewReason?.trim().replace(/\u2014|\u2013/g, "-");
+  return [reason, detail].filter(Boolean).join("\n\n");
 }
 
 /** A batch entry's arguments, which Composio accepts as an object or a JSON string. */

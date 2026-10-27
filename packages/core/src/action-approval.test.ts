@@ -347,18 +347,30 @@ describe("resolveActionApproval", () => {
 });
 
 describe("planActionGate", () => {
-  const unruled = { decision: "allow" as const, source: "default" as const, matchingRules: [] };
+  const unruled = {
+    decision: "allow" as const,
+    source: "default" as const,
+    matchingRules: [],
+    decisiveRules: [],
+  };
   const allowed = {
     decision: "allow" as const,
     source: "always_allow" as const,
     matchingRules: [],
+    decisiveRules: [],
   };
   const asked = {
     decision: "ask" as const,
     source: "require_approval" as const,
     matchingRules: [],
+    decisiveRules: [],
   };
-  const blocked = { decision: "deny" as const, source: "deny" as const, matchingRules: [] };
+  const blocked = {
+    decision: "deny" as const,
+    source: "deny" as const,
+    matchingRules: [],
+    decisiveRules: [],
+  };
   const gate = (
     mode: ApprovalMode,
     overrides: Partial<Parameters<typeof planActionGate>[0]> = {},
@@ -608,6 +620,36 @@ describe("Composio batches", () => {
         ],
       }),
     ).toMatchObject({ decision: "allow", source: "default" });
+  });
+
+  it("attributes a batch ask only to the action whose rule required it", () => {
+    const gmailAsk: ActionApprovalRule = {
+      effect: "require_approval",
+      matchKind: "connector",
+      matchValue: "gmail",
+    };
+    const gmailAllow: ActionApprovalRule = {
+      effect: "always_allow",
+      matchKind: "tool",
+      matchValue: "GMAIL_SEND_EMAIL",
+    };
+    const purchaseAsk: ActionApprovalRule = {
+      effect: "require_approval",
+      matchKind: "category",
+      matchValue: "purchase",
+    };
+
+    const resolved = resolveActionApprovalForTools({
+      tools: [
+        { name: "GMAIL_SEND_EMAIL", readOnly: false },
+        { name: "STRIPE_CREATE_CHARGE", connectorKind: "stripe", readOnly: false },
+      ],
+      rules: [gmailAsk, gmailAllow, purchaseAsk],
+    });
+
+    expect(resolved).toMatchObject({ decision: "ask", source: "require_approval" });
+    expect(resolved.matchingRules).toEqual(expect.arrayContaining([gmailAsk, purchaseAsk]));
+    expect(decisiveActionApprovalRules(resolved)).toEqual([purchaseAsk]);
   });
 });
 
