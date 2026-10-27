@@ -164,6 +164,7 @@ describe("mobile i18n", () => {
       "{provider} can't run this model.",
       "{provider} denied access to this model.",
       "The model returned an unusable response. Try again.",
+      "The model hit its output limit before finishing its reply.",
       "This model's context window is too small. Choose another model.",
       "{provider} took too long to respond. Try again.",
       "{provider} is overloaded right now. Try again in a moment.",

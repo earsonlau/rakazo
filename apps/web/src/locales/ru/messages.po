@@ -65,6 +65,11 @@ msgstr "Соединение {0}"
 msgid "{0} default"
 msgstr "{0} по умолчанию"
 
+#. placeholder {0}: parts.amount
+#: src/components/ArtifactFileCard.tsx
+msgid "{0} GB"
+msgstr "{0} ГБ"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
@@ -85,12 +90,12 @@ msgstr "{0} не работает"
 msgid "{0} is running"
 msgstr "{0} работает"
 
-#. placeholder {0}: format(size / 1024)
+#. placeholder {0}: parts.amount
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} KB"
 msgstr "{0} КБ"
 
-#. placeholder {0}: format(size / (1024 * 1024))
+#. placeholder {0}: parts.amount
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} MB"
 msgstr "{0} МБ"
@@ -99,6 +104,11 @@ msgstr "{0} МБ"
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
 msgstr "{0} ч. сводки"
+
+#. placeholder {0}: parts.amount
+#: src/components/ArtifactFileCard.tsx
+msgid "{0} TB"
+msgstr "{0} ТБ"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -356,13 +366,9 @@ msgid "@{0}"
 msgstr "@{0}"
 
 #. placeholder {0}: amount / 100
+#. placeholder {0}: status.byokPriceCents / 100
 #: src/components/ModelCredits.tsx
 msgid "${0} / month"
-msgstr ""
-
-#. placeholder {0}: amount / 100
-#: src/components/ModelCredits.tsx
-msgid "${0} in monthly model credits. No API key needed."
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -609,6 +615,11 @@ msgstr "Компьютер агента"
 msgid "Agents:"
 msgstr "Агенты:"
 
+#. placeholder {0}: amount / 100
+#: src/components/ModelCredits.tsx
+msgid "All ${0} goes to model usage."
+msgstr "Все ${0} идут на использование моделей."
+
 #: src/pages/Artifacts.tsx
 #: src/pages/shell/agent-import.tsx
 msgid "All bots"
@@ -706,11 +717,6 @@ msgstr "Ответить"
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "Ответил"
-
-#. placeholder {0}: selectedAskActionLabel(answer, actions)
-#: src/components/AskCard.tsx
-msgid "Answered: {0}"
-msgstr "Ответ: {0}"
 
 #: src/components/AskCard.tsx
 msgid "Answered: {answer}"
@@ -886,6 +892,7 @@ msgstr "Студия аватаров"
 
 #: src/pages/Auth.tsx
 #: src/pages/Board.tsx
+#: src/pages/NavLinkPage.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/SettingsOverlay.tsx
@@ -1030,10 +1037,6 @@ msgstr "Вызов…"
 msgid "Calls"
 msgstr "Вызовы"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "Can edit and organise bots it creates"
-msgstr "Может редактировать и упорядочивать созданных ботов"
-
 #: src/App.tsx
 msgid "Can't reach the server."
 msgstr "Не удаётся связаться с сервером."
@@ -1102,6 +1105,10 @@ msgstr "Изменить {name}"
 msgid "Change {title}"
 msgstr "Изменить: {title}"
 
+#: src/pages/shell/composer-error.tsx
+msgid "Change model"
+msgstr "Сменить модель"
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "Изменить пароль"
@@ -1124,10 +1131,6 @@ msgstr "Общайтесь с ботом из Slack."
 
 #: src/lib/localized-provider-hint.ts
 msgid "ChatGPT subscription"
-msgstr ""
-
-#: src/components/ModelCredits.tsx
-msgid "ChatGPT, Claude, or any model provider."
 msgstr ""
 
 #: src/lib/identity-display.ts
@@ -1225,6 +1228,7 @@ msgid "Choose folder"
 msgstr "Выбрать папку"
 
 #: src/components/ModelCredits.tsx
+#: src/components/SubscriptionGate.tsx
 msgid "Choose how to use Rakazo"
 msgstr ""
 
@@ -1232,6 +1236,7 @@ msgstr ""
 msgid "Claude subscription"
 msgstr ""
 
+#: src/components/AskCard.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "Очистить"
@@ -1581,10 +1586,6 @@ msgstr ""
 #: src/pages/Auth.tsx
 msgid "Continue with {0}"
 msgstr "Продолжить с {0}"
-
-#: src/components/ModelCredits.tsx
-msgid "Continue with credits"
-msgstr ""
 
 #: src/pages/MessagingSettingsPanel.tsx
 msgid "Conversations"
@@ -1973,6 +1974,7 @@ msgstr "Не удалось сохранить задачу"
 msgid "Could not save rule"
 msgstr "Не удалось сохранить правило."
 
+#: src/components/teach/SkillDraftCard.tsx
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
 msgstr "Не удалось сохранить навык"
@@ -2767,6 +2769,10 @@ msgstr "Забыли пароль?"
 msgid "Free"
 msgstr "Бесплатно"
 
+#: src/pages/shell/shell-sidebar.tsx
+msgid "Free plan ends {day}"
+msgstr "Бесплатный тариф закончится {day}"
+
 #: src/lib/cron.ts
 msgid "Friday"
 msgstr "пятница"
@@ -2912,10 +2918,6 @@ msgstr ""
 msgid "How often"
 msgstr "Как часто"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "How other bots see it"
-msgstr "Как его видят другие боты"
-
 #: src/components/teach/SkillDraftCard.tsx
 msgid "How to check"
 msgstr "Как проверить"
@@ -2935,6 +2937,15 @@ msgstr "Если вы это услышали, голос готов."
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Ignore"
 msgstr "игнорировать"
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "Image input is not configured for this model."
+msgstr "Ввод изображений не настроен для этой модели."
+
+#: src/lib/user-error.ts
+msgid "Image input is not configured for this model."
+msgstr "Ввод изображений не настроен для этой модели."
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Image upload area"
@@ -4349,7 +4360,6 @@ msgstr "URI перенаправления"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "Обновить"
 
@@ -4755,6 +4765,10 @@ msgstr ""
 msgid "Scopes (optional)"
 msgstr "Области доступа (необязательно)"
 
+#: src/pages/shell/use-computer.tsx
+msgid "Screen not connected"
+msgstr "Экран не подключён"
+
 #: src/pages/model-settings/model-picker.tsx
 #: src/pages/model-settings/providers-section.tsx
 #: src/pages/model-settings/role-model-picker.tsx
@@ -4836,6 +4850,10 @@ msgstr ""
 msgid "Send answer"
 msgstr "Отправить ответ"
 
+#: src/pages/shell/composer-error.tsx
+msgid "Send as file"
+msgstr "Отправить как файл"
+
 #: src/components/AccountAccess.tsx
 msgid "Send deletion code"
 msgstr "Отправить код удаления"
@@ -4859,6 +4877,10 @@ msgstr "Отправлять по Enter"
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "Отправка…"
+
+#: src/components/AskCard.tsx
+msgid "Sent"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Sentry alert"
@@ -5131,9 +5153,10 @@ msgstr "SSO временно недоступен. Попробуйте снов
 msgid "Start"
 msgstr ""
 
+#: src/components/ModelCredits.tsx
 #: src/pages/Paywall.tsx
 msgid "Start {trialDays}-day free trial"
-msgstr ""
+msgstr "Начать бесплатный пробный период на {trialDays} дн."
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Start recording"
@@ -5207,7 +5230,20 @@ msgstr "Отправить"
 #: src/components/ModelCredits.tsx
 #: src/pages/Paywall.tsx
 msgid "Subscribe"
-msgstr ""
+msgstr "Оформить подписку"
+
+#. placeholder {0}: status.byokPriceCents / 100
+#: src/components/ModelCredits.tsx
+msgid "Subscribe for ${0} / month"
+msgstr "Подписаться за ${0} / месяц"
+
+#: src/components/ModelCredits.tsx
+msgid "Subscribe to Rakazo credits"
+msgstr "Оформить подписку на кредиты Rakazo"
+
+#: src/components/ModelCredits.tsx
+msgid "Subscribe with your own AI"
+msgstr "Оформить подписку со своим ИИ"
 
 #: src/pages/Paywall.tsx
 msgid "Subscription required"
@@ -5301,9 +5337,18 @@ msgstr "Проверка…"
 msgid "The bot and what its import added will be removed."
 msgstr "Бот и всё, что добавил его импорт, будут удалены."
 
+#: src/pages/shell/composer-error.tsx
+msgid "The bot can use the file but won't see the picture."
+msgstr "Бот сможет использовать файл, но не увидит изображение."
+
 #: src/lib/model-connection-preflight.ts
 msgid "The connection timed out."
 msgstr "Время ожидания соединения истекло."
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "The model hit its output limit before finishing its reply."
+msgstr "Модель достигла лимита вывода, не закончив ответ."
 
 #. js-lingui-explicit-id
 #: src/lib/run-error.ts
@@ -5318,6 +5363,18 @@ msgstr "Модель вернула непригодный ответ. Попр�
 #: src/lib/model-connection-preflight.ts
 msgid "The provider is rate-limiting requests."
 msgstr "Поставщик ограничивает частоту запросов."
+
+#: src/lib/computer-screen.ts
+msgid "The screen connection closed."
+msgstr "Соединение с экраном закрыто."
+
+#: src/lib/computer-screen.ts
+msgid "The screen did not respond."
+msgstr "Экран не ответил."
+
+#: src/lib/computer-screen.ts
+msgid "The screen link expired."
+msgstr "Срок действия ссылки на экран истёк."
 
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
@@ -5413,6 +5470,15 @@ msgstr "Этот импорт уже использован. Выберите ф
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
 msgstr "этот Mac"
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "This model cannot read images. Choose a model that supports images."
+msgstr "Эта модель не может читать изображения. Выберите модель с поддержкой изображений."
+
+#: src/lib/user-error.ts
+msgid "This model cannot read images. Choose a model that supports images."
+msgstr "Эта модель не может читать изображения. Выберите модель с поддержкой изображений."
 
 #. js-lingui-explicit-id
 #: src/lib/run-error.ts
@@ -5538,10 +5604,6 @@ msgstr "Источники инструментов"
 #: src/pages/shell/bot-panel.tsx
 msgid "Tools"
 msgstr "Инструменты"
-
-#: src/components/ModelCredits.tsx
-msgid "Top up anytime"
-msgstr ""
 
 #: src/components/composer/HoldToTalk.tsx
 msgid "Transcribing…"
@@ -5687,6 +5749,10 @@ msgstr "Обновление компьютера команды"
 msgid "Updating…"
 msgstr "Обновление…"
 
+#: src/pages/shell/shell-sidebar.tsx
+msgid "Upgrade"
+msgstr "Улучшить тариф"
+
 #: src/components/ModelCredits.tsx
 msgid "Upgrade now"
 msgstr ""
@@ -5784,6 +5850,10 @@ msgstr "Использует собственные учётные данные 
 msgid "Using your API key"
 msgstr ""
 
+#: src/components/ModelCredits.tsx
+msgid "Using your API key. Free plan ends {freeUntil}."
+msgstr "Используется ваш API-ключ. Бесплатный тариф закончится {freeUntil}."
+
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
 msgid "Value"
@@ -5800,10 +5870,6 @@ msgstr "Проверка…"
 #: src/pages/Artifacts.tsx
 msgid "Version"
 msgstr ""
-
-#: src/pages/RoutineRunHistory.tsx
-msgid "View chat"
-msgstr "Открыть чат"
 
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -5944,6 +6010,10 @@ msgstr "Рабочие инструкции"
 #: src/pages/shell/transcript.tsx
 msgid "Working…"
 msgstr "Выполняется…"
+
+#: src/components/ModelCredits.tsx
+msgid "Works with your ChatGPT or Claude plan."
+msgstr "Работает с вашей подпиской ChatGPT или Claude."
 
 #: src/pages/memory-providers/HonchoSettingsForm.tsx
 msgid "Workspace"

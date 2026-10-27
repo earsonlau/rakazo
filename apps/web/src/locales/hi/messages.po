@@ -65,6 +65,11 @@ msgstr "{0} कनेक्शन"
 msgid "{0} default"
 msgstr ""
 
+#. placeholder {0}: parts.amount
+#: src/components/ArtifactFileCard.tsx
+msgid "{0} GB"
+msgstr "{0} GB"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
@@ -85,12 +90,12 @@ msgstr "{0} काम नहीं कर रहा है"
 msgid "{0} is running"
 msgstr "{0} चल रहा है"
 
-#. placeholder {0}: format(size / 1024)
+#. placeholder {0}: parts.amount
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} KB"
 msgstr "{0} KB"
 
-#. placeholder {0}: format(size / (1024 * 1024))
+#. placeholder {0}: parts.amount
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} MB"
 msgstr "{0} MB"
@@ -99,6 +104,11 @@ msgstr "{0} MB"
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
 msgstr ""
+
+#. placeholder {0}: parts.amount
+#: src/components/ArtifactFileCard.tsx
+msgid "{0} TB"
+msgstr "{0} TB"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -356,13 +366,9 @@ msgid "@{0}"
 msgstr "@{0}"
 
 #. placeholder {0}: amount / 100
+#. placeholder {0}: status.byokPriceCents / 100
 #: src/components/ModelCredits.tsx
 msgid "${0} / month"
-msgstr ""
-
-#. placeholder {0}: amount / 100
-#: src/components/ModelCredits.tsx
-msgid "${0} in monthly model credits. No API key needed."
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -609,6 +615,11 @@ msgstr "एजेंट कंप्यूटर"
 msgid "Agents:"
 msgstr "एजेंट:"
 
+#. placeholder {0}: amount / 100
+#: src/components/ModelCredits.tsx
+msgid "All ${0} goes to model usage."
+msgstr "पूरे ${0} मॉडल उपयोग में जाते हैं।"
+
 #: src/pages/Artifacts.tsx
 #: src/pages/shell/agent-import.tsx
 msgid "All bots"
@@ -706,11 +717,6 @@ msgstr "कॉल उठाएँ"
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "उत्तर दिया गया"
-
-#. placeholder {0}: selectedAskActionLabel(answer, actions)
-#: src/components/AskCard.tsx
-msgid "Answered: {0}"
-msgstr "उत्तर दिया: {0}"
 
 #: src/components/AskCard.tsx
 msgid "Answered: {answer}"
@@ -886,6 +892,7 @@ msgstr "अवतार स्टूडियो"
 
 #: src/pages/Auth.tsx
 #: src/pages/Board.tsx
+#: src/pages/NavLinkPage.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/SettingsOverlay.tsx
@@ -1030,10 +1037,6 @@ msgstr "कॉल हो रही है…"
 msgid "Calls"
 msgstr "कॉल"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "Can edit and organise bots it creates"
-msgstr "अपने बनाए बॉट को संपादित और व्यवस्थित कर सकता है"
-
 #: src/App.tsx
 msgid "Can't reach the server."
 msgstr "सर्वर तक नहीं पहुंचा जा सका।"
@@ -1102,6 +1105,10 @@ msgstr "{name} बदलें"
 msgid "Change {title}"
 msgstr "{title} बदलें"
 
+#: src/pages/shell/composer-error.tsx
+msgid "Change model"
+msgstr "मॉडल बदलें"
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "पासवर्ड बदलें"
@@ -1124,10 +1131,6 @@ msgstr "Slack से अपने बॉट से चैट करें।"
 
 #: src/lib/localized-provider-hint.ts
 msgid "ChatGPT subscription"
-msgstr ""
-
-#: src/components/ModelCredits.tsx
-msgid "ChatGPT, Claude, or any model provider."
 msgstr ""
 
 #: src/lib/identity-display.ts
@@ -1225,6 +1228,7 @@ msgid "Choose folder"
 msgstr "फ़ोल्डर चुनें"
 
 #: src/components/ModelCredits.tsx
+#: src/components/SubscriptionGate.tsx
 msgid "Choose how to use Rakazo"
 msgstr ""
 
@@ -1232,6 +1236,7 @@ msgstr ""
 msgid "Claude subscription"
 msgstr ""
 
+#: src/components/AskCard.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "साफ़ करें"
@@ -1581,10 +1586,6 @@ msgstr ""
 #: src/pages/Auth.tsx
 msgid "Continue with {0}"
 msgstr "{0} के साथ जारी रखें"
-
-#: src/components/ModelCredits.tsx
-msgid "Continue with credits"
-msgstr ""
 
 #: src/pages/MessagingSettingsPanel.tsx
 msgid "Conversations"
@@ -1973,6 +1974,7 @@ msgstr "रूटीन सहेजा नहीं जा सका"
 msgid "Could not save rule"
 msgstr "नियम सहेजा नहीं जा सका"
 
+#: src/components/teach/SkillDraftCard.tsx
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
 msgstr "स्किल सहेजी नहीं जा सकी"
@@ -2767,6 +2769,10 @@ msgstr "पासवर्ड भूल गए?"
 msgid "Free"
 msgstr ""
 
+#: src/pages/shell/shell-sidebar.tsx
+msgid "Free plan ends {day}"
+msgstr "मुफ़्त प्लान {day} को खत्म होगा"
+
 #: src/lib/cron.ts
 msgid "Friday"
 msgstr "शुक्रवार"
@@ -2912,10 +2918,6 @@ msgstr ""
 msgid "How often"
 msgstr "कितनी बार"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "How other bots see it"
-msgstr "दूसरे बॉट इसे कैसे देखते हैं"
-
 #: src/components/teach/SkillDraftCard.tsx
 msgid "How to check"
 msgstr "जांच कैसे करें"
@@ -2935,6 +2937,15 @@ msgstr "अगर आपने वह सुना, तो आवाज़ त�
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Ignore"
 msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "Image input is not configured for this model."
+msgstr "इस मॉडल के लिए चित्र इनपुट कॉन्फ़िगर नहीं है।"
+
+#: src/lib/user-error.ts
+msgid "Image input is not configured for this model."
+msgstr "इस मॉडल के लिए चित्र इनपुट कॉन्फ़िगर नहीं है।"
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Image upload area"
@@ -4349,7 +4360,6 @@ msgstr "रीडायरेक्ट URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "रीफ़्रेश करें"
 
@@ -4755,6 +4765,10 @@ msgstr ""
 msgid "Scopes (optional)"
 msgstr "स्कोप (वैकल्पिक)"
 
+#: src/pages/shell/use-computer.tsx
+msgid "Screen not connected"
+msgstr "स्क्रीन कनेक्ट नहीं है"
+
 #: src/pages/model-settings/model-picker.tsx
 #: src/pages/model-settings/providers-section.tsx
 #: src/pages/model-settings/role-model-picker.tsx
@@ -4836,6 +4850,10 @@ msgstr ""
 msgid "Send answer"
 msgstr "उत्तर भेजें"
 
+#: src/pages/shell/composer-error.tsx
+msgid "Send as file"
+msgstr "फ़ाइल के रूप में भेजें"
+
 #: src/components/AccountAccess.tsx
 msgid "Send deletion code"
 msgstr "हटाने का कोड भेजें"
@@ -4859,6 +4877,10 @@ msgstr "Enter से भेजें"
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "भेजा जा रहा है…"
+
+#: src/components/AskCard.tsx
+msgid "Sent"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Sentry alert"
@@ -5131,9 +5153,10 @@ msgstr "SSO अस्थायी रूप से उपलब्ध नही�
 msgid "Start"
 msgstr ""
 
+#: src/components/ModelCredits.tsx
 #: src/pages/Paywall.tsx
 msgid "Start {trialDays}-day free trial"
-msgstr ""
+msgstr "{trialDays} दिन का मुफ़्त ट्रायल शुरू करें"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Start recording"
@@ -5207,7 +5230,20 @@ msgstr "सबमिट करें"
 #: src/components/ModelCredits.tsx
 #: src/pages/Paywall.tsx
 msgid "Subscribe"
-msgstr ""
+msgstr "सदस्यता लें"
+
+#. placeholder {0}: status.byokPriceCents / 100
+#: src/components/ModelCredits.tsx
+msgid "Subscribe for ${0} / month"
+msgstr "${0} / माह पर सदस्यता लें"
+
+#: src/components/ModelCredits.tsx
+msgid "Subscribe to Rakazo credits"
+msgstr "Rakazo क्रेडिट की सदस्यता लें"
+
+#: src/components/ModelCredits.tsx
+msgid "Subscribe with your own AI"
+msgstr "अपने AI के साथ सदस्यता लें"
 
 #: src/pages/Paywall.tsx
 msgid "Subscription required"
@@ -5301,9 +5337,18 @@ msgstr "परीक्षण हो रहा है…"
 msgid "The bot and what its import added will be removed."
 msgstr "बॉट और उसके इंपोर्ट से जोड़ी गई चीज़ें हटा दी जाएँगी।"
 
+#: src/pages/shell/composer-error.tsx
+msgid "The bot can use the file but won't see the picture."
+msgstr "बॉट फ़ाइल का उपयोग कर सकता है, लेकिन तस्वीर नहीं देख पाएगा।"
+
 #: src/lib/model-connection-preflight.ts
 msgid "The connection timed out."
 msgstr "कनेक्शन का समय समाप्त हो गया।"
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "The model hit its output limit before finishing its reply."
+msgstr "मॉडल अपना जवाब पूरा करने से पहले अपनी आउटपुट सीमा तक पहुँच गया।"
 
 #. js-lingui-explicit-id
 #: src/lib/run-error.ts
@@ -5318,6 +5363,18 @@ msgstr "मॉडल ने ऐसा जवाब दिया जिसका 
 #: src/lib/model-connection-preflight.ts
 msgid "The provider is rate-limiting requests."
 msgstr "प्रोवाइडर अनुरोधों की दर सीमित कर रहा है।"
+
+#: src/lib/computer-screen.ts
+msgid "The screen connection closed."
+msgstr "स्क्रीन का कनेक्शन बंद हो गया।"
+
+#: src/lib/computer-screen.ts
+msgid "The screen did not respond."
+msgstr "स्क्रीन ने जवाब नहीं दिया।"
+
+#: src/lib/computer-screen.ts
+msgid "The screen link expired."
+msgstr "स्क्रीन लिंक की समय सीमा समाप्त हो गई।"
 
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
@@ -5413,6 +5470,15 @@ msgstr "यह इंपोर्ट पहले ही इस्तेमा�
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
 msgstr "यह Mac"
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "This model cannot read images. Choose a model that supports images."
+msgstr "यह मॉडल चित्र नहीं पढ़ सकता। चित्रों का समर्थन करने वाला मॉडल चुनें।"
+
+#: src/lib/user-error.ts
+msgid "This model cannot read images. Choose a model that supports images."
+msgstr "यह मॉडल चित्र नहीं पढ़ सकता। चित्रों का समर्थन करने वाला मॉडल चुनें।"
 
 #. js-lingui-explicit-id
 #: src/lib/run-error.ts
@@ -5537,10 +5603,6 @@ msgstr "टूल स्रोत"
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Tools"
-msgstr ""
-
-#: src/components/ModelCredits.tsx
-msgid "Top up anytime"
 msgstr ""
 
 #: src/components/composer/HoldToTalk.tsx
@@ -5687,6 +5749,10 @@ msgstr ""
 msgid "Updating…"
 msgstr "अपडेट हो रहा है…"
 
+#: src/pages/shell/shell-sidebar.tsx
+msgid "Upgrade"
+msgstr "अपग्रेड करें"
+
 #: src/components/ModelCredits.tsx
 msgid "Upgrade now"
 msgstr ""
@@ -5784,6 +5850,10 @@ msgstr "{selectedProviderName} तक पहुँचने के लिए इ
 msgid "Using your API key"
 msgstr ""
 
+#: src/components/ModelCredits.tsx
+msgid "Using your API key. Free plan ends {freeUntil}."
+msgstr "आपकी API कुंजी इस्तेमाल हो रही है। मुफ़्त प्लान {freeUntil} को खत्म होगा।"
+
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
 msgid "Value"
@@ -5800,10 +5870,6 @@ msgstr "पुष्टि की जा रही है…"
 #: src/pages/Artifacts.tsx
 msgid "Version"
 msgstr ""
-
-#: src/pages/RoutineRunHistory.tsx
-msgid "View chat"
-msgstr "चैट देखें"
 
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -5944,6 +6010,10 @@ msgstr "काम के निर्देश"
 #: src/pages/shell/transcript.tsx
 msgid "Working…"
 msgstr "काम चल रहा है…"
+
+#: src/components/ModelCredits.tsx
+msgid "Works with your ChatGPT or Claude plan."
+msgstr "आपके ChatGPT या Claude प्लान के साथ काम करता है।"
 
 #: src/pages/memory-providers/HonchoSettingsForm.tsx
 msgid "Workspace"

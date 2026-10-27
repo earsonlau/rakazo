@@ -17,6 +17,8 @@ export const authCapabilitiesSchema = z.object({
   passkeyRpId: z.string().min(1).nullable().optional(),
   /** Native apps this domain vouches for; omitted by older servers, which means none. */
   nativePasskeys: z.object({ ios: z.boolean(), android: z.boolean() }).optional(),
+  /** Crisp chat on the paywall; null or omitted when the deployment offers none. */
+  crispWebsiteId: z.string().min(1).nullable().optional(),
 });
 export type AuthCapabilities = z.infer<typeof authCapabilitiesSchema>;
 

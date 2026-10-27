@@ -18,6 +18,7 @@ import {
   parseMcpOAuthAuthorizationParams,
 } from "./mcp.js";
 import { ModelHeadersSchema } from "./model-headers.js";
+import { NavLinkSchema } from "./nav-links.js";
 import { RoutineWatchSchema, RoutineWatchStateSchema } from "./routine-watch.js";
 import { RunTriggerSchema } from "./runs.js";
 import { SettingsScopeSchema } from "./settings-scope.js";
@@ -477,6 +478,9 @@ export function routineModelIssues(
   }
 }
 
+/** Maximum parent count in one routine mention lookup. */
+export const ROUTINE_MENTION_BATCH_MAX = 100;
+
 export const RoutineSchema = z.object({
   id: Id,
   botId: Id,
@@ -506,6 +510,8 @@ export const RoutineSchema = z.object({
   /** Computed by the server; absent on older servers. Not a worker-health diagnosis. */
   scheduleDelayed: z.boolean().optional(),
   createdAt: z.string(),
+  /** False when another Space member created it; only its creator can change it. */
+  editable: z.boolean().optional(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;
 
@@ -1593,6 +1599,8 @@ export const MeSchema = z.object({
   maxUploadSizeBytes: z.number().int().positive().optional(),
   ticketBoardEnabled: z.boolean(),
   phoneCallsEnabled: z.boolean().default(false),
+  /** Operator-configured menu links. Absent from older servers. */
+  navLinks: z.array(NavLinkSchema).default([]),
   userId: Id,
   email: z.string().email(),
   name: z.string(),
@@ -1625,6 +1633,8 @@ export const MeSchema = z.object({
 export type Me = z.infer<typeof MeSchema>;
 
 export const MODEL_CREDIT_AMOUNTS = [1000, 2000, 5000, 10000, 20000, 50000] as const;
+/** Monthly price in cents of running bots on your own model connection; `null` makes it free. */
+export const BYOK_MONTHLY_PRICE_CENTS: number | null = 1000;
 export const DEFAULT_MONTHLY_CREDIT_AMOUNT = 2000;
 export const ModelCreditAmountSchema = z.union(
   MODEL_CREDIT_AMOUNTS.map((amount) => z.literal(amount)),
@@ -1657,6 +1667,10 @@ export const BillingStatusSchema = z.object({
   balanceUsd: z.number().optional(),
   monthlyAmountCents: z.number().int().positive().nullable().optional(),
   creditPurchasesEnabled: z.boolean().optional(),
+  /** Monthly price of the own-key plan; `null` when it is free. */
+  byokPriceCents: z.number().int().positive().nullable().optional(),
+  /** End of an unpaid own-key organization's free period. */
+  byokFreeUntil: z.string().nullable().optional(),
   access: z.boolean(),
   /** Only organization owners start checkout or open the billing portal. */
   canManage: z.boolean(),

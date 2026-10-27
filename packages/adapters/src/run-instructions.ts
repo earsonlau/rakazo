@@ -1,5 +1,5 @@
 import { FLEET_WRITE_TOOL_NAMES } from "@rakazo/contracts";
-import { toolRequiresExplicitApproval } from "@rakazo/core";
+import { runReadsThreadHistory, toolRequiresExplicitApproval } from "@rakazo/core";
 import { MODEL_CANNOT_SEE_MESSAGE } from "./model-vision.js";
 import { replyGuidanceForOfferedTools } from "./run-replies.js";
 import { SCHEDULE_TOOL_NAMES } from "./schedule-tools.js";
@@ -182,6 +182,11 @@ function secretGuidance(disabled?: ReadonlySet<string>): string[] {
       : "";
     clauses.push(
       `Use request_secret with a credential destination to save reusable API credentials, or with auth type login when the user wants a website login saved${fill}. When your shell commands need a secret value, use request_secret with auth type command; it is exported as the environment variable that request_secret and list_secrets report.`,
+    );
+  }
+  if (builtinOffered(disabled, "generate_secret")) {
+    clauses.push(
+      "When you need a new password or key, such as for a website sign-up or a database you set up, use generate_secret instead of choosing one.",
     );
   }
   const uses: string[] = [];
@@ -386,7 +391,7 @@ export function threadContextForRun<T extends { id?: string; role: string }>(
   }
   // Routine runs stay isolated from thread history. The creation intro does
   // too: a message that arrives during it waits and is answered afterward.
-  if (trigger === "created" || trigger === "routine") {
+  if (!runReadsThreadHistory(trigger)) {
     return {
       messages: [] as T[],
       summary: null,

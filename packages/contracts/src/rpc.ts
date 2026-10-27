@@ -94,6 +94,7 @@ import {
   OPENAI_COMPATIBLE_PROVIDER_ID,
   REPLY_QUOTE_MAX_LENGTH,
   ReorderBotsInput,
+  ROUTINE_MENTION_BATCH_MAX,
   RoutineSchema,
   ScratchpadItemSchema,
   ScratchpadItemStatusSchema,
@@ -133,7 +134,12 @@ import { ModelHeadersSchema } from "./model-headers.js";
 import { ModelRoleSchema, ModelRoleUpdateSchema, ModelRoleViewSchema } from "./model-roles.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RoutineWatchSchema } from "./routine-watch.js";
-import { RoutineHistorySchema, RoutineRunCursorSchema, RunsListOutputSchema } from "./runs.js";
+import {
+  ROUTINE_HISTORY_PAGE_SIZE,
+  RoutineHistorySchema,
+  RoutineRunCursorSchema,
+  RunsListOutputSchema,
+} from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
 import { SecurityEventListInputSchema, SecurityEventSchema } from "./security-events.js";
 import { SettingsScopeSchema, SpaceSettingSchema, settingsScopeInput } from "./settings-scope.js";
@@ -167,6 +173,7 @@ const structuredMentionTarget = z.discriminatedUnion("kind", [
 
 const threadSendInput = threadTarget
   .safeExtend({
+    imageHandling: z.enum(["confirm", "file"]).optional(),
     text: z.string().optional(),
     artifactIds: z.array(Id).max(ATTACHMENT_MAX_COUNT).optional(),
     /** Bare bot ids (legacy) or typed mention chips from the composer. */
@@ -222,7 +229,8 @@ export const appContract = {
     status: oc.output(BillingStatusSchema),
     selectFunding: oc
       .input(z.object({ funding: z.enum(["byok", "credits"]) }))
-      .output(z.object({ ok: z.literal(true) })),
+      /** `url` is the checkout to pay for the own-key plan before it has access. */
+      .output(z.object({ ok: z.literal(true), url: z.string().url().optional() })),
     purchaseCredits: oc
       .input(z.object({ amountCents: ModelCreditAmountSchema, monthly: z.boolean() }))
       .output(z.object({ url: z.string().url() })),
@@ -659,9 +667,18 @@ export const appContract = {
     disconnectProvider: oc.output(z.object({ ok: z.literal(true) })),
   },
   routines: {
+    listForMentions: oc
+      .input(z.object({ botIds: z.array(Id).min(1).max(ROUTINE_MENTION_BATCH_MAX) }))
+      .output(z.array(z.object({ botId: Id, routines: z.array(RoutineSchema) }))),
     list: oc.input(botId).output(z.array(RoutineSchema)),
     history: oc
-      .input(z.object({ routineId: Id, before: RoutineRunCursorSchema.optional() }))
+      .input(
+        z.object({
+          routineId: Id,
+          before: RoutineRunCursorSchema.optional(),
+          limit: z.number().int().min(1).max(ROUTINE_HISTORY_PAGE_SIZE).optional(),
+        }),
+      )
       .output(RoutineHistorySchema),
     create: oc.input(CreateRoutineInput).output(RoutineSchema),
     update: oc

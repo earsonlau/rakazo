@@ -65,6 +65,11 @@ msgstr "{0} 연결"
 msgid "{0} default"
 msgstr ""
 
+#. placeholder {0}: parts.amount
+#: src/components/ArtifactFileCard.tsx
+msgid "{0} GB"
+msgstr "{0} GB"
+
 #. placeholder {0}: sender.name
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} handling"
@@ -85,12 +90,12 @@ msgstr "{0}이(가) 작동하지 않습니다"
 msgid "{0} is running"
 msgstr "{0}이(가) 실행 중입니다"
 
-#. placeholder {0}: format(size / 1024)
+#. placeholder {0}: parts.amount
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} KB"
 msgstr "{0} KB"
 
-#. placeholder {0}: format(size / (1024 * 1024))
+#. placeholder {0}: parts.amount
 #: src/components/ArtifactFileCard.tsx
 msgid "{0} MB"
 msgstr "{0} MB"
@@ -99,6 +104,11 @@ msgstr "{0} MB"
 #: src/pages/ExternalConversationSettings.tsx
 msgid "{0} rollup hours"
 msgstr ""
+
+#. placeholder {0}: parts.amount
+#: src/components/ArtifactFileCard.tsx
+msgid "{0} TB"
+msgstr "{0} TB"
 
 #. placeholder {0}: bot.name
 #: src/pages/ExternalConversationSettings.tsx
@@ -356,13 +366,9 @@ msgid "@{0}"
 msgstr "@{0}"
 
 #. placeholder {0}: amount / 100
+#. placeholder {0}: status.byokPriceCents / 100
 #: src/components/ModelCredits.tsx
 msgid "${0} / month"
-msgstr ""
-
-#. placeholder {0}: amount / 100
-#: src/components/ModelCredits.tsx
-msgid "${0} in monthly model credits. No API key needed."
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
@@ -609,6 +615,11 @@ msgstr "Agent 컴퓨터"
 msgid "Agents:"
 msgstr "사용 Bot:"
 
+#. placeholder {0}: amount / 100
+#: src/components/ModelCredits.tsx
+msgid "All ${0} goes to model usage."
+msgstr "${0} 전액이 모델 사용에 쓰입니다."
+
 #: src/pages/Artifacts.tsx
 #: src/pages/shell/agent-import.tsx
 msgid "All bots"
@@ -706,11 +717,6 @@ msgstr "답변"
 #: src/components/AskCard.tsx
 msgid "Answered"
 msgstr "응답함"
-
-#. placeholder {0}: selectedAskActionLabel(answer, actions)
-#: src/components/AskCard.tsx
-msgid "Answered: {0}"
-msgstr "응답: {0}"
 
 #: src/components/AskCard.tsx
 msgid "Answered: {answer}"
@@ -886,6 +892,7 @@ msgstr "아바타 스튜디오"
 
 #: src/pages/Auth.tsx
 #: src/pages/Board.tsx
+#: src/pages/NavLinkPage.tsx
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/SettingsOverlay.tsx
@@ -1030,10 +1037,6 @@ msgstr ""
 msgid "Calls"
 msgstr "호출"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "Can edit and organise bots it creates"
-msgstr "자신이 만든 봇을 편집하고 정리할 수 있음"
-
 #: src/App.tsx
 msgid "Can't reach the server."
 msgstr "서버에 연결할 수 없습니다."
@@ -1102,6 +1105,10 @@ msgstr "{name} 변경"
 msgid "Change {title}"
 msgstr "{title} 변경"
 
+#: src/pages/shell/composer-error.tsx
+msgid "Change model"
+msgstr "모델 변경"
+
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Change password"
 msgstr "비밀번호 변경"
@@ -1124,10 +1131,6 @@ msgstr "Slack에서 봇과 채팅하세요."
 
 #: src/lib/localized-provider-hint.ts
 msgid "ChatGPT subscription"
-msgstr ""
-
-#: src/components/ModelCredits.tsx
-msgid "ChatGPT, Claude, or any model provider."
 msgstr ""
 
 #: src/lib/identity-display.ts
@@ -1225,6 +1228,7 @@ msgid "Choose folder"
 msgstr "폴더 선택"
 
 #: src/components/ModelCredits.tsx
+#: src/components/SubscriptionGate.tsx
 msgid "Choose how to use Rakazo"
 msgstr ""
 
@@ -1232,6 +1236,7 @@ msgstr ""
 msgid "Claude subscription"
 msgstr ""
 
+#: src/components/AskCard.tsx
 #: src/pages/shell/dialogs.tsx
 msgid "Clear"
 msgstr "비우기"
@@ -1581,10 +1586,6 @@ msgstr ""
 #: src/pages/Auth.tsx
 msgid "Continue with {0}"
 msgstr "{0}(으)로 계속"
-
-#: src/components/ModelCredits.tsx
-msgid "Continue with credits"
-msgstr ""
 
 #: src/pages/MessagingSettingsPanel.tsx
 msgid "Conversations"
@@ -1973,6 +1974,7 @@ msgstr "자동 실행을 저장하지 못했습니다."
 msgid "Could not save rule"
 msgstr "확인 규칙을 저장하지 못했습니다."
 
+#: src/components/teach/SkillDraftCard.tsx
 #: src/pages/KnowledgeSection.tsx
 msgid "Could not save skill"
 msgstr "스킬을 저장하지 못했습니다"
@@ -2767,6 +2769,10 @@ msgstr "비밀번호를 잊으셨나요?"
 msgid "Free"
 msgstr "무료"
 
+#: src/pages/shell/shell-sidebar.tsx
+msgid "Free plan ends {day}"
+msgstr "무료 플랜이 {day}에 종료됩니다"
+
 #: src/lib/cron.ts
 msgid "Friday"
 msgstr "금요일"
@@ -2912,10 +2918,6 @@ msgstr ""
 msgid "How often"
 msgstr "실행 주기"
 
-#: src/pages/shell/bot-panel.tsx
-msgid "How other bots see it"
-msgstr "다른 봇이 이 봇을 보는 방식"
-
 #: src/components/teach/SkillDraftCard.tsx
 msgid "How to check"
 msgstr "완료 확인 방법"
@@ -2935,6 +2937,15 @@ msgstr "샘플이 들렸다면 음성 설정이 완료되었습니다."
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Ignore"
 msgstr ""
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "Image input is not configured for this model."
+msgstr "이 모델에는 이미지 입력이 설정되어 있지 않습니다."
+
+#: src/lib/user-error.ts
+msgid "Image input is not configured for this model."
+msgstr "이 모델에는 이미지 입력이 설정되어 있지 않습니다."
 
 #: src/pages/shell/avatar-studio-popover.tsx
 msgid "Image upload area"
@@ -4349,7 +4360,6 @@ msgstr "리디렉션 URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "새로고침"
 
@@ -4755,6 +4765,10 @@ msgstr ""
 msgid "Scopes (optional)"
 msgstr "범위 (선택 사항)"
 
+#: src/pages/shell/use-computer.tsx
+msgid "Screen not connected"
+msgstr "화면이 연결되지 않음"
+
 #: src/pages/model-settings/model-picker.tsx
 #: src/pages/model-settings/providers-section.tsx
 #: src/pages/model-settings/role-model-picker.tsx
@@ -4836,6 +4850,10 @@ msgstr ""
 msgid "Send answer"
 msgstr "답변 보내기"
 
+#: src/pages/shell/composer-error.tsx
+msgid "Send as file"
+msgstr "파일로 보내기"
+
 #: src/components/AccountAccess.tsx
 msgid "Send deletion code"
 msgstr "삭제 코드 보내기"
@@ -4859,6 +4877,10 @@ msgstr "Enter 키로 전송"
 #: src/components/AskCard.tsx
 msgid "Sending…"
 msgstr "보내는 중…"
+
+#: src/components/AskCard.tsx
+msgid "Sent"
+msgstr ""
 
 #: src/pages/RoutineEditor.tsx
 msgid "Sentry alert"
@@ -5131,9 +5153,10 @@ msgstr "SSO를 일시적으로 사용할 수 없습니다. 다시 시도하세�
 msgid "Start"
 msgstr ""
 
+#: src/components/ModelCredits.tsx
 #: src/pages/Paywall.tsx
 msgid "Start {trialDays}-day free trial"
-msgstr ""
+msgstr "{trialDays}일 무료 체험 시작"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Start recording"
@@ -5207,7 +5230,20 @@ msgstr "확인"
 #: src/components/ModelCredits.tsx
 #: src/pages/Paywall.tsx
 msgid "Subscribe"
-msgstr ""
+msgstr "구독"
+
+#. placeholder {0}: status.byokPriceCents / 100
+#: src/components/ModelCredits.tsx
+msgid "Subscribe for ${0} / month"
+msgstr "월 ${0}에 구독"
+
+#: src/components/ModelCredits.tsx
+msgid "Subscribe to Rakazo credits"
+msgstr "Rakazo 크레딧 구독"
+
+#: src/components/ModelCredits.tsx
+msgid "Subscribe with your own AI"
+msgstr "내 AI로 구독"
 
 #: src/pages/Paywall.tsx
 msgid "Subscription required"
@@ -5301,9 +5337,18 @@ msgstr "테스트 중…"
 msgid "The bot and what its import added will be removed."
 msgstr "봇과 가져오기로 추가된 항목이 제거됩니다."
 
+#: src/pages/shell/composer-error.tsx
+msgid "The bot can use the file but won't see the picture."
+msgstr "Bot은 파일을 사용할 수 있지만 이미지는 볼 수 없습니다."
+
 #: src/lib/model-connection-preflight.ts
 msgid "The connection timed out."
 msgstr "연결 시간이 초과되었습니다."
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "The model hit its output limit before finishing its reply."
+msgstr "모델이 답변을 끝내기 전에 출력 한도에 도달했습니다."
 
 #. js-lingui-explicit-id
 #: src/lib/run-error.ts
@@ -5318,6 +5363,18 @@ msgstr "모델이 사용할 수 없는 응답을 반환했습니다. 다시 시�
 #: src/lib/model-connection-preflight.ts
 msgid "The provider is rate-limiting requests."
 msgstr "서비스가 요청 속도를 제한하고 있습니다."
+
+#: src/lib/computer-screen.ts
+msgid "The screen connection closed."
+msgstr "화면 연결이 종료되었습니다."
+
+#: src/lib/computer-screen.ts
+msgid "The screen did not respond."
+msgstr "화면이 응답하지 않았습니다."
+
+#: src/lib/computer-screen.ts
+msgid "The screen link expired."
+msgstr "화면 링크가 만료되었습니다."
 
 #: src/pages/MemorySettingsOverlay.tsx
 msgid "The selected memory provider is not available in this build."
@@ -5413,6 +5470,15 @@ msgstr "이미 사용된 가져오기입니다. 파일을 다시 선택하세요
 #: src/pages/HostComputerPrompt.tsx
 msgid "this Mac"
 msgstr "이 Mac"
+
+#. js-lingui-explicit-id
+#: src/lib/run-error.ts
+msgid "This model cannot read images. Choose a model that supports images."
+msgstr "이 모델은 이미지를 읽을 수 없습니다. 이미지를 지원하는 모델을 선택하세요."
+
+#: src/lib/user-error.ts
+msgid "This model cannot read images. Choose a model that supports images."
+msgstr "이 모델은 이미지를 읽을 수 없습니다. 이미지를 지원하는 모델을 선택하세요."
 
 #. js-lingui-explicit-id
 #: src/lib/run-error.ts
@@ -5537,10 +5603,6 @@ msgstr "도구 소스"
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Tools"
-msgstr ""
-
-#: src/components/ModelCredits.tsx
-msgid "Top up anytime"
 msgstr ""
 
 #: src/components/composer/HoldToTalk.tsx
@@ -5687,6 +5749,10 @@ msgstr ""
 msgid "Updating…"
 msgstr "업데이트 중…"
 
+#: src/pages/shell/shell-sidebar.tsx
+msgid "Upgrade"
+msgstr "업그레이드"
+
 #: src/components/ModelCredits.tsx
 msgid "Upgrade now"
 msgstr ""
@@ -5784,6 +5850,10 @@ msgstr "이 서버의 자체 {hostCredentialSource} 자격 증명으로 {selecte
 msgid "Using your API key"
 msgstr ""
 
+#: src/components/ModelCredits.tsx
+msgid "Using your API key. Free plan ends {freeUntil}."
+msgstr "내 API 키를 사용 중입니다. 무료 플랜이 {freeUntil}에 종료됩니다."
+
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/shell/bot-credentials.tsx
 msgid "Value"
@@ -5800,10 +5870,6 @@ msgstr "확인 중…"
 #: src/pages/Artifacts.tsx
 msgid "Version"
 msgstr ""
-
-#: src/pages/RoutineRunHistory.tsx
-msgid "View chat"
-msgstr "채팅 보기"
 
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -5944,6 +6010,10 @@ msgstr "작업 지침"
 #: src/pages/shell/transcript.tsx
 msgid "Working…"
 msgstr "처리 중…"
+
+#: src/components/ModelCredits.tsx
+msgid "Works with your ChatGPT or Claude plan."
+msgstr "ChatGPT 또는 Claude 요금제로 사용할 수 있습니다."
 
 #: src/pages/memory-providers/HonchoSettingsForm.tsx
 msgid "Workspace"

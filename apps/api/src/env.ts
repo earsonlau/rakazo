@@ -10,8 +10,9 @@ import {
   telegramBotsFromEnv,
 } from "@rakazo/adapters";
 import type { OidcConfig } from "@rakazo/auth";
-import type { MinimumClientBuilds } from "@rakazo/contracts";
-import { parseMinimumClientBuilds } from "@rakazo/contracts";
+import type { MinimumClientBuilds, NavLink } from "@rakazo/contracts";
+import { parseMinimumClientBuilds, parseNavLinks } from "@rakazo/contracts";
+import { parseCrispWebsiteId } from "@rakazo/contracts/content-security-policy";
 import {
   phoneCallSettings,
   resolveAuthSecret,
@@ -57,6 +58,8 @@ export interface AppEnv {
   /** Opt-in Pi JSONL session recording under DATA_DIR/pi-sessions. Default off. */
   piSessionRecording: boolean;
   ticketBoardEnabled: boolean;
+  /** Operator menu links that frame a same-origin page (RAKAZO_NAV_LINKS). */
+  navLinks?: NavLink[];
   phoneCallsEnabled: boolean;
   phoneCallRingSeconds: number;
   phoneCallCooldownMinutes: number;
@@ -144,6 +147,8 @@ export interface AppEnv {
   browserMonitoring:
     | { dsn: string; environment?: string; release?: string; pseudonymSecret?: string }
     | undefined;
+  /** Crisp chat on the paywall, for the hosted service; self-hosted installs leave it unset. */
+  crispWebsiteId?: string | null;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -223,6 +228,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     dataDir: source.DATA_DIR ?? "./data",
     piSessionRecording: source.PI_SESSION_RECORDING === "true",
     ticketBoardEnabled: source.TICKET_BOARD_ENABLED === "true",
+    navLinks: parseNavLinks(source.RAKAZO_NAV_LINKS),
     ...phoneCallSettings(source),
     maxUploadSizeBytes: uploadSizeFromEnv(source),
     voiceSummaryMinChars: voiceSummaryMinCharsFromEnv(source.VOICE_SUMMARY_MIN_CHARS),
@@ -299,6 +305,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     gitSha: optional(source.GIT_SHA) ?? optional(source.RAKAZO_GIT_SHA),
     minimumClientBuilds: parseMinimumClientBuilds(source.RAKAZO_MIN_CLIENT_BUILD),
     browserMonitoring: browserMonitoringFromEnv(source),
+    crispWebsiteId: parseCrispWebsiteId(source.CRISP_WEBSITE_ID),
   };
 }
 

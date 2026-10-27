@@ -174,6 +174,20 @@ test("a model too small for required instructions offers a model change", async 
   await captureScreenshot(page, testInfo, "required-context-model-recovery");
 });
 
+test("a reply cut off at the output limit offers a model change", async ({ page }, testInfo) => {
+  await signup(page, `cut-reply-run-${Date.now()}@rakazo.test`, "password12", "Cut Reply Run");
+  await completeOnboarding(page);
+  await page.getByPlaceholder(/^Message /).fill("fail this run with a cut reply");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const error = page.getByTestId("composer-error");
+  await expect(error).toContainText("The model hit its output limit before finishing its reply.", {
+    timeout: 30_000,
+  });
+  await expect(error.getByTestId("composer-error-action")).toHaveText("Choose a model");
+  await captureScreenshot(page, testInfo, "cut-reply-model-recovery");
+});
+
 test("a provider out of credits offers another model", async ({ page }, testInfo) => {
   await signup(page, `credits-run-${Date.now()}@rakazo.test`, "password12", "Credits Run");
   await completeOnboarding(page);

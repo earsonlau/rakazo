@@ -5,6 +5,7 @@ import {
   BotSecretName,
   botSecretDestinationSchema,
   FLEET_TOOL_NAMES,
+  GenerateSecretInput,
   SecretAskPurpose,
   SecretHttpRequest,
   TICKET_COMMENT_MAX_LENGTH,
@@ -252,7 +253,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "computer_act",
     description:
-      "Perform up to 24 ordered desktop actions on this bot's computer and return the resulting screen. Batch only predictable actions; stop before an outcome you need to inspect. Action kinds: click, move, down, up, type, key, scroll, wait, focus (raises the application's window, launching it if absent).",
+      "Perform up to 24 ordered desktop actions on this bot's computer and return the resulting screen. Batch only predictable actions; stop before an outcome you need to inspect. Action kinds: click, move, down, up, type, key, scroll, wait, focus (raises the application's window, launching it if absent). Scroll turns the wheel at x,y; put them on the area to scroll, as for a click. Without them it scrolls wherever the pointer is. Direction up, down, left or right; amount 1-20 wheel notches, default 3.",
     inputSchema: {
       type: "object",
       properties: {
@@ -283,7 +284,7 @@ export const builtinAgentTools: ConnectorTool[] = [
                   text: { type: "string" },
                   key: { type: "string" },
                   modifiers: { type: "array", items: { type: "string" } },
-                  direction: { type: "string", enum: ["up", "down"] },
+                  direction: { type: "string", enum: ["up", "down", "left", "right"] },
                   amount: { type: "number" },
                   ms: { type: "number" },
                   application: { type: "string" },
@@ -513,6 +514,12 @@ export const builtinAgentTools: ConnectorTool[] = [
     get inputSchema() {
       return secretAskToolSurface().inputSchema;
     },
+  },
+  {
+    name: "generate_secret",
+    description:
+      'Create a random password or key and save it for this bot and user; you never see the value. For a new website account, use type "login" with the sign-up site and the username, then type both into the form with browser_act fill_secret; add command: true only when a CLI also needs the password and the site offers no token or browser sign-in for it; that saves it as the command variable <name>-password too. For a value shell commands need, such as a database password you are setting up, use type "command"; it is exported like a request_secret command variable, so pass it from the environment instead of writing it out. Set rules only when the site or tool restricts characters, for example symbols: false for a value inside a URL. An existing credential is never replaced.',
+    inputSchema: z.toJSONSchema(GenerateSecretInput, { io: "input" }),
   },
   {
     name: "list_secrets",

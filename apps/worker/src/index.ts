@@ -11,6 +11,7 @@ loadRootEnv();
 import {
   ChatSdkMessagingSurface,
   CodexCatalogCache,
+  contentKeyProviderFromEnv,
   createAgentHomeStore,
   createArtifactStore,
   createBackgroundJobHandlers,
@@ -101,6 +102,7 @@ async function main() {
   const created = createDb(databaseUrl, {
     poolMax,
     applicationName: "rakazo-worker",
+    keyProvider: contentKeyProviderFromEnv(),
   });
   const { pool } = created;
   let { prisma } = created;

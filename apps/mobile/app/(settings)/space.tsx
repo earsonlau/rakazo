@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LoadFailure } from "../../components/load-failure";
 import { NativeSwitch } from "../../components/native-switch";
 import { SettingsGroup, SettingsRow } from "../../components/settings-group";
 import { mobileTokens } from "../../lib/appearance";
@@ -27,6 +28,8 @@ export default function SpaceSettings() {
   const [overrides, setOverrides] = useState<SpaceSetting[] | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,15 +37,17 @@ export default function SpaceSettings() {
       let current = true;
       void rpc("spaceSettings/overrides")
         .then((next) => {
-          if (current) setOverrides(next);
+          if (!current) return;
+          setOverrides(next);
+          setLoadError(null);
         })
         .catch((err: unknown) => {
-          if (current) setError(errorText(err, t("Something went wrong. Try again.")));
+          if (current) setLoadError(errorText(err, t("Something went wrong. Try again.")));
         });
       return () => {
         current = false;
       };
-    }, [rpc, t, target.scope]),
+    }, [attempt, rpc, t, target.scope]),
   );
 
   if (target.scope !== "space") return null;
@@ -57,6 +62,7 @@ export default function SpaceSettings() {
   async function customize(setting: SpaceSetting, enabled: boolean) {
     setPending(true);
     setError(null);
+    setLoadError(null);
     try {
       setOverrides(await rpc("spaceSettings/setOverride", { setting, enabled }));
       if (enabled) open(setting);
@@ -88,6 +94,9 @@ export default function SpaceSettings() {
     );
   };
 
+  const failure = error ?? loadError;
+  const shownError = error ?? (overrides ? loadError : null);
+
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
       <ScrollView
@@ -95,9 +104,18 @@ export default function SpaceSettings() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {error ? (
+        {failure && !overrides ? (
+          <LoadFailure
+            message={failure}
+            onRetry={() => {
+              setError(null);
+              setLoadError(null);
+              setAttempt((count) => count + 1);
+            }}
+          />
+        ) : shownError ? (
           <Text accessibilityRole="alert" style={styles.error}>
-            {error}
+            {shownError}
           </Text>
         ) : null}
         <SettingsGroup accessibilityLabel={t("Customize")} label={t("Customize")}>
