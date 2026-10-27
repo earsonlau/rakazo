@@ -440,6 +440,16 @@ export function previewActionApprovalRule(
   effect: "always_allow" | "deny" | "remove",
   sample: Omit<Parameters<typeof resolveActionApprovalForTools>[0], "rules">,
 ) {
+  const connectorKinds = rules
+    .filter((entry) => entry.matchKind === "connector")
+    .map((entry) => entry.matchValue);
+  const context = {
+    ...sample,
+    tools: sample.tools.map((tool) => ({
+      ...tool,
+      connectorKind: tool.connectorKind ?? connectorKindFromToolName(tool.name, connectorKinds),
+    })),
+  };
   const remaining = rules.filter(
     (other) =>
       other.matchKind !== rule.matchKind ||
@@ -450,8 +460,8 @@ export function previewActionApprovalRule(
       ? rules.filter((other) => other !== rule)
       : [...remaining, { ...rule, effect }];
   return {
-    before: resolveActionApprovalForTools({ ...sample, rules }).source,
-    after: resolveActionApprovalForTools({ ...sample, rules: next }).source,
+    before: resolveActionApprovalForTools({ ...context, rules }).source,
+    after: resolveActionApprovalForTools({ ...context, rules: next }).source,
   };
 }
 

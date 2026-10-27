@@ -30,6 +30,24 @@ it("does not let a candidate allow override a broader block", () => {
   });
 });
 
+it("matches the longest connector prefix without attributing unrelated tools to it", () => {
+  const connector: ActionApprovalRule = {
+    effect: "deny",
+    matchKind: "connector",
+    matchValue: "microsoft_outlook",
+  };
+  expect(
+    previewActionApprovalRule([connector], connector, "remove", {
+      tools: [{ name: "MICROSOFT_OUTLOOK_SEND_EMAIL" }],
+    }),
+  ).toEqual({ before: "deny", after: "default" });
+  expect(
+    previewActionApprovalRule([connector], connector, "always_allow", {
+      tools: [{ name: "slack_post_message" }],
+    }),
+  ).toEqual({ before: "default", after: "default" });
+});
+
 it("replaces matching effects case-insensitively but removes only the selected rule", () => {
   const other: ActionApprovalRule = {
     ...allow,

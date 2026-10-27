@@ -49,7 +49,6 @@ export function ApprovalRulePreviewForm({
             tools: [
               {
                 name: tool.trim(),
-                ...(rule.matchKind === "connector" ? { connectorKind: rule.matchValue } : {}),
               },
             ],
             ...(rule.matchKind === "site" ? { site: rule.matchValue } : {}),
