@@ -7,17 +7,16 @@ permissions:
 jobs:
   reproduce:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        revision: [c010878b1824c048089e96935f442a3f1d4b3f04, 4257476d5c8d949717a7f7147ce32eaf00482df2]
-        shard: [1, 2, 3, 4]
+        variant: [fixed, broken-layering]
     steps:
       - uses: actions/checkout@v5
         with:
-          repository: elie222/rakazo
-          ref: ${{ matrix.revision }}
+          repository: earsonlau/rakazo
+          ref: 258bb70ef85eace87f45654e6bba01143f46d645
           persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -26,12 +25,32 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @rakazo/web exec playwright install chromium
-      - run: pnpm test:e2e -- --sandbox=fake --shard=${{ matrix.shard }}/4
+      - name: Restore the old layering for the negative control
+        if: matrix.variant == 'broken-layering'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/pages/shell/transcript.tsx')
+          text = path.read_text()
+          assert text.count('group/message relative hover:z-[1]') == 1
+          path.write_text(text.replace('group/message relative hover:z-[1]', 'group/message relative hover:z-20'))
+          PY
+      - name: Check the repaired test and negative control
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set +e
+          pnpm test:e2e -- --sandbox=fake --grep='message hover shows beside-bubble actions' > header-test.log 2>&1
+          result=$?
+          tail -n 60 header-test.log
+          if [ "$VARIANT" = fixed ]; then exit "$result"; fi
+          test "$result" -ne 0 && grep -q 'expect(headerReceivesHit).toBe(true)' header-test.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: web-e2e-${{ matrix.revision }}-${{ matrix.shard }}
+          name: header-control-${{ matrix.variant }}
           path: |
             apps/web/test-results
             blob-report
+            header-test.log
           retention-days: 7
