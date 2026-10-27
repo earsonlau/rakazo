@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  SOURCE_REVISION: e09491aea7827e12ec79797cdad530d058a71cb6
+  SOURCE_REVISION: ae2005897719f42b6c693837c66e6d07704f6a8a
 
 jobs:
   checks:
