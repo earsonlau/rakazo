@@ -500,9 +500,10 @@ function savedRuleReason(
   const rules = decisiveActionApprovalRules(resolved);
   if (rules.length === 0) return undefined;
   const action = resolved.source === "deny" ? "block" : "ask before";
-  const targets = rules.map(
-    (rule) => `${rule.matchKind} "${rule.matchValue.trim().replace(/\s+/g, " ") || "this action"}"`,
-  );
+  const targets = rules.map((rule) => {
+    const value = rule.matchValue.trim().replace(/\s+/g, " ") || "this action";
+    return `${rule.matchKind} ${JSON.stringify(value)}`;
+  });
   return `Saved rule: ${action} ${targets.join(", ")}.`;
 }
 
