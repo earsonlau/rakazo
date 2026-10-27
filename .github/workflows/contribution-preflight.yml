@@ -2,13 +2,13 @@ name: Contribution preflight
 
 on:
   push:
-    branches: [codex/contribution-preflight]
+    branches: [codex/approval-preview-preflight]
 
 permissions:
   contents: read
 
 env:
-  SOURCE_REVISION: cdd0ea952b859df7af3a98829d5428b3592fd853
+  SOURCE_REVISION: 8661fa212f9e607abaf2bdd6e7b6d2121f9bf620
 
 jobs:
   checks:
