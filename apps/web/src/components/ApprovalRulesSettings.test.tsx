@@ -168,8 +168,21 @@ it("shows what older rules do, including email and purchase ones", async () => {
   try {
     await vi.waitFor(() => expect(container.textContent).toContain("Send email"));
     expect(button(container, "Ask", rules)?.getAttribute("aria-pressed")).toBe("true");
-    expect(container.querySelector(rules)?.textContent).toContain("EmailAskRemove");
-    expect(container.querySelector(rules)?.textContent).toContain("PurchaseAllowRemove");
+    for (const [name, effect] of [
+      ["Email", "Ask"],
+      ["Purchase", "Allow"],
+    ]) {
+      const label = [...container.querySelectorAll(`${rules} .text-foreground`)].find(
+        (entry) => entry.textContent === name,
+      );
+      const row = label?.parentElement?.parentElement;
+      expect(row?.textContent).toContain(effect);
+      expect(row?.querySelector("[aria-pressed]")).toBeNull();
+      expect([...row!.querySelectorAll("button")].map((entry) => entry.textContent)).toEqual([
+        "Preview",
+        "Remove",
+      ]);
+    }
     await act(async () => root.unmount());
   } finally {
     container.remove();
