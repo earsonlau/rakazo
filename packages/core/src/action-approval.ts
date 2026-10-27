@@ -342,6 +342,20 @@ export type ActionApprovalResolved = {
 };
 
 /**
+ * The saved rules responsible for an ask or block. Broader rules that also matched
+ * are omitted so a refusal points at the decisive rule instead of every candidate.
+ */
+export function decisiveActionApprovalRules(
+  resolved: ActionApprovalResolved,
+): ActionApprovalRule[] {
+  if (resolved.source !== "require_approval" && resolved.source !== "deny") return [];
+  const matching = resolved.matchingRules.filter((rule) => rule.effect === resolved.source);
+  if (matching.length === 0) return [];
+  const highestSpecificity = Math.max(...matching.map(ruleSpecificity));
+  return matching.filter((rule) => ruleSpecificity(rule) === highestSpecificity);
+}
+
+/**
  * Deterministic rule resolution. A block always wins, so a narrower allow cannot punch through it.
  * Otherwise the most specific rule decides, and `site`, the destination of an outbound fetch,
  * beats a rule for the tool.

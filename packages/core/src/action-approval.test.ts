@@ -9,6 +9,7 @@ import {
   connectorKindFromToolName,
   connectorReadRequiresApproval,
   connectorToolRequiresApproval,
+  decisiveActionApprovalRules,
   isApprovalAskBlock,
   isOwnerStartedRun,
   isSecretAskBlock,
@@ -486,6 +487,62 @@ describe("block rules", () => {
         rules: [rule("deny", "tool", "gmail_list_messages")],
       }),
     ).toContain("blocked");
+  });
+});
+
+describe("decisiveActionApprovalRules", () => {
+  const rule = (
+    effect: ActionApprovalRule["effect"],
+    matchKind: ActionApprovalRule["matchKind"],
+    matchValue: string,
+  ): ActionApprovalRule => ({ effect, matchKind, matchValue });
+
+  it("reports only the most specific rule that asked", () => {
+    const category = rule("require_approval", "category", "email");
+    const tool = rule("require_approval", "tool", "gmail_send_email");
+    const connector = rule("always_allow", "connector", "gmail");
+    const resolved = resolveActionApprovalDetail({
+      toolName: "GMAIL_SEND_EMAIL",
+      connectorKind: "gmail",
+      rules: [category, tool, connector],
+    });
+
+    expect(resolved).toMatchObject({ decision: "ask", source: "require_approval" });
+    expect(decisiveActionApprovalRules(resolved)).toEqual([tool]);
+  });
+
+  it("reports the block rule even when a narrower allow also matched", () => {
+    const block = rule("deny", "connector", "gmail");
+    const allow = rule("always_allow", "tool", "gmail_send_email");
+    const resolved = resolveActionApprovalDetail({
+      toolName: "GMAIL_SEND_EMAIL",
+      connectorKind: "gmail",
+      rules: [block, allow],
+    });
+
+    expect(resolved).toMatchObject({ decision: "deny", source: "deny" });
+    expect(decisiveActionApprovalRules(resolved)).toEqual([block]);
+  });
+
+  it("reports nothing when no saved rule decided", () => {
+    expect(
+      decisiveActionApprovalRules(
+        resolveActionApprovalDetail({
+          toolName: "GMAIL_SEND_EMAIL",
+          connectorKind: "gmail",
+          rules: [],
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      decisiveActionApprovalRules(
+        resolveActionApprovalDetail({
+          toolName: "GMAIL_SEND_EMAIL",
+          connectorKind: "gmail",
+          rules: [rule("always_allow", "tool", "gmail_send_email")],
+        }),
+      ),
+    ).toEqual([]);
   });
 });
 
