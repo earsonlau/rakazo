@@ -95,12 +95,9 @@ export function buildApprovalAskBlock(
       kind: "ask",
       approvalEffectId: effectId,
       text: "Update instructions?",
-      detail: truncate(
-        redactSecrets(
-          withReviewReason(options?.reviewReason, instructionUpdateDiff(before, after, reason)),
-          secrets,
-        ),
-        MAX_APPROVAL_DETAIL_LENGTH,
+      detail: redactSecrets(
+        withReviewReason(options?.reviewReason, instructionUpdateDiff(before, after, reason)),
+        secrets,
       ),
       instructionUpdate: {
         botId: String(args.botId ?? ""),

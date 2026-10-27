@@ -119,6 +119,28 @@ it("shows the saved rule reason before an instruction diff", () => {
   });
 });
 
+it("keeps a long instruction replacement visible after adding the saved rule reason", () => {
+  const previousInstructions = Array.from(
+    { length: 600 },
+    (_, index) => `Existing rule ${index}`,
+  ).join("\n");
+  const block = buildApprovalAskBlock(
+    "effect-1",
+    "propose_instructions_update",
+    {
+      botId: "bot-1",
+      previousInstructions,
+      instructions: "New replacement",
+      reason: "Learned preference",
+    },
+    [],
+    { reviewReason: 'Saved rule: ask before tool "propose_instructions_update".' },
+  );
+  if (block.kind !== "ask") throw new Error("expected ask block");
+  expect(block.detail?.length).toBeGreaterThan(4_000);
+  expect(block.detail).toContain("+ New replacement");
+});
+
 it("redacts known secrets in instruction approval details and editable metadata", () => {
   const block = buildApprovalAskBlock(
     "effect-1",
