@@ -189,7 +189,7 @@ export default function Approvals() {
                 </MenuView>
                 {previewRule === rule.id ? (
                   <ApprovalRulePreviewForm
-                    key={`${spaceId}:${rule.id}:${rule.effect}`}
+                    key={`${spaceId}:${rule.id}:${JSON.stringify(rules)}`}
                     rule={rule}
                     scope={scope}
                     rpc={rpc}

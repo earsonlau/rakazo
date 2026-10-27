@@ -205,6 +205,35 @@ it("previews a rule without saving it in the selected space", async () => {
     ),
   ).toBe(false);
 });
+
+it("clears a preview and ignores old responses when another saved rule is removed", async () => {
+  state.rules = [
+    rule({ id: "tool" }),
+    rule({ id: "connector", matchKind: "connector", matchValue: "gmail", effect: "deny" }),
+  ];
+  await render();
+  await act(async () => menuButton("Send email", "Preview")!.click());
+  const testButton = () =>
+    [...container.querySelectorAll("button")].find((entry) => entry.textContent === "Test rule")!;
+  await act(async () => testButton().click());
+  expect(container.textContent).toContain("Current: Allow rule");
+  await act(async () => menuButton("gmail", "Allow")!.click());
+  expect(container.textContent).not.toContain("Current: Allow rule");
+  const base = state.rpc.getMockImplementation()!;
+  let finish!: (value: { before: string; after: string }) => void;
+  state.rpc.mockImplementation((proc: string, input?: Record<string, unknown>) =>
+    proc === "approvalRules/preview"
+      ? new Promise((resolve) => {
+          finish = resolve;
+        })
+      : base(proc, input),
+  );
+  await act(async () => testButton().click());
+  await act(async () => menuButton("gmail", "Remove")!.click());
+  await act(async () => finish({ before: "deny", after: "deny" }));
+  expect(container.textContent).not.toContain("Current: Block rule");
+  expect(container.textContent).not.toContain("Current: Allow rule");
+});
 afterEach(() => {
   act(() => root.unmount());
   container.remove();

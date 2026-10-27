@@ -193,7 +193,7 @@ export function ApprovalRulesSettings({ scope }: { scope: SettingsScope }) {
               />
               {previewRule === rule.id ? (
                 <ApprovalRulePreview
-                  key={`${scope}:${rule.id}:${rule.effect}`}
+                  key={`${scope}:${rule.id}:${JSON.stringify(rules)}`}
                   rule={rule}
                   scope={scope}
                 />
