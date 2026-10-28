@@ -2,6 +2,18 @@
 
 Thanks for helping improve Rakazo. Keep changes focused and testable.
 
+## Before starting
+
+For non-trivial changes, check the issue assignee, recent comments, and open or recently
+merged PRs by issue number and relevant keywords. Comment on the issue with the scope you
+intend to take and coordinate before implementing if someone is already working. For tiny
+fixes, still check for an existing PR.
+
+When you have a concrete first change, open a draft PR targeting `main` and link the issue.
+Draft PRs show the work is active without waiting for it to be complete. If you pause or
+stop, leave a short progress update and, if assigned, release the issue so someone else can
+continue.
+
 ## Run locally
 
 Follow the [source checkout setup](README.md#local-development-source-checkout) for prerequisites,
