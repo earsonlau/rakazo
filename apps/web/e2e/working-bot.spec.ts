@@ -102,7 +102,9 @@ test("delegated work stays working and stoppable with a newer queued run", async
     await captureScreenshot(page, testInfo, "working-bot-steer");
     await steer.click();
     await expect(composer).toHaveValue("");
-    await expect.poll(() => prisma.steeringMessage.count({ where: { threadId } })).toBe(1);
+    await expect
+      .poll(() => prisma.steeringMessage.count({ where: { message: { threadId } } }))
+      .toBe(1);
     await stop.click();
     await expect
       .poll(async () =>
@@ -116,7 +118,7 @@ test("delegated work stays working and stoppable with a newer queued run", async
       .toEqual(["cancelled", "cancelled"]);
     await expect(stop).toBeHidden();
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
-    expect(await prisma.steeringMessage.count({ where: { threadId } })).toBe(0);
+    expect(await prisma.steeringMessage.count({ where: { message: { threadId } } })).toBe(0);
   } finally {
     await rpc(page, "threads/stop", { botId: bot.id }).catch(() => undefined);
     await prisma.$disconnect();
