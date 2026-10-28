@@ -2247,7 +2247,7 @@ msgstr "需要验证邮箱"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Ends {day}"
-msgstr "{day} 结束"
+msgstr "将于 {day} 结束"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Engage when... Ignore..."
@@ -3928,7 +3928,7 @@ msgstr "重命名工作区"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Renews {day}"
-msgstr "{day} 续订"
+msgstr "将于 {day} 续订"
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Reopen"
@@ -4878,7 +4878,7 @@ msgstr "试用"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Trial ends {day}"
-msgstr "试用 {day} 结束"
+msgstr "试用将于 {day} 结束"
 
 #: src/pages/ActivityList.tsx
 #: src/pages/Onboarding.tsx
