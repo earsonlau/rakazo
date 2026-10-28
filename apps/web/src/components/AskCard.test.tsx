@@ -383,6 +383,29 @@ it("points an open approval at Settings → Approvals", async () => {
   });
   expect(container.textContent).toContain("Denied");
   expect(container.textContent).not.toContain(hint);
+
+  await act(async () =>
+    root.render(
+      <AskCard
+        block={{
+          kind: "ask",
+          approvalEffectId: "effect-1",
+          text: "Send it?",
+          status: "pending",
+          actions: [
+            { id: "allow", label: "Allow once" },
+            { id: "deny", label: "Deny" },
+          ],
+        }}
+        canAnswer={false}
+        canDismiss={false}
+        onAnswer={async () => undefined}
+        onDismiss={async () => undefined}
+      />,
+    ),
+  );
+  expect(container.textContent).toContain("No longer active");
+  expect(container.textContent).not.toContain(hint);
 });
 
 it("sizes approval buttons like the other card buttons", async () => {

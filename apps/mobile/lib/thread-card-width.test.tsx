@@ -434,6 +434,32 @@ describe("thread cards", () => {
     renderAsk(
       {
         approvalEffectId: "effect-1",
+        instructionUpdate: { botId: "bot-1", before: "old", after: "new", reason: "clearer" },
+        actions: [
+          { id: "allow", label: "Apply" },
+          { id: "deny", label: "Dismiss" },
+        ],
+      },
+      true,
+    );
+    expect(container.textContent).not.toContain(hint);
+
+    renderAsk(
+      {
+        approvalEffectId: "effect-1",
+        actions: [
+          { id: "allow", label: "Allow once" },
+          { id: "deny", label: "Deny" },
+        ],
+      },
+      false,
+    );
+    expect(container.textContent).toContain("No longer active");
+    expect(container.textContent).not.toContain(hint);
+
+    renderAsk(
+      {
+        approvalEffectId: "effect-1",
         status: "answered",
         answer: "deny",
         actions: [
