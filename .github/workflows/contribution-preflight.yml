@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 env:
-  SOURCE_REVISION: 2b1b9a7ae8b7249fca7fa6682a24b19ebb68926e
+  SOURCE_REVISION: af596a9cc2536e09e4e32cd3f5f1dc7a4fb895e8
+  TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX: mirror.gcr.io/
 
 jobs:
   checks:
