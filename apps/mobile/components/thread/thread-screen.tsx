@@ -596,6 +596,7 @@ export function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId:
             botId={botId}
             onCall={onCall}
             working={working}
+            steering={inGroup ? workingGroupBots.length > 0 : isRunWorking(currentBotStatus)}
             sending={composer.sending || attachments.shareImporting}
             styles={styles}
             attachActions={attachments.attachActions}

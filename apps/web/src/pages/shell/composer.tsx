@@ -61,6 +61,7 @@ export const Composer = memo(function Composer({
   artifactTarget,
   activeName,
   running,
+  steering,
   disabled,
   pendingAttachments,
   attachmentNotice,
@@ -95,6 +96,7 @@ export const Composer = memo(function Composer({
 }: {
   activeName?: string;
   running: boolean;
+  steering: boolean;
   disabled?: boolean;
   pendingAttachments: PendingAttachment[];
   attachmentNotice: string | null;
@@ -958,14 +960,14 @@ export const Composer = memo(function Composer({
                 <HoldToTalkControls talk={talk} disabled={disabled || onCall} />
               ) : null}
               <Button
-                size="sm"
-                aria-label={t`Steer`}
+                size={steering ? "sm" : "icon"}
+                aria-label={steering ? t`Steer` : t`Send`}
                 disabled={sending || !canSend || disabled}
                 onClick={() => void send()}
-                className="h-8 shrink-0 rounded-full transition-transform active:scale-95 disabled:bg-primary-disabled disabled:text-foreground/30 disabled:opacity-100"
+                className={`${steering ? "h-8" : "size-8"} shrink-0 rounded-full transition-transform active:scale-95 disabled:bg-primary-disabled disabled:text-foreground/30 disabled:opacity-100`}
               >
                 <ArrowUp size={16} strokeWidth={2.2} />
-                {t`Steer`}
+                {steering ? t`Steer` : null}
               </Button>
               <Button
                 variant="outline"

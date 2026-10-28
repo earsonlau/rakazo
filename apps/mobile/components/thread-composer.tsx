@@ -51,6 +51,7 @@ type ThreadComposerProps = {
   botId?: string;
   onCall: boolean;
   working: boolean;
+  steering: boolean;
   sending: boolean;
   styles: { circleButton: ViewStyle; composerFill: ViewStyle };
   attachActions: MenuAction[];
@@ -74,6 +75,7 @@ export function ThreadComposer({
   botId,
   onCall,
   working,
+  steering,
   sending,
   styles,
   attachActions,
@@ -668,7 +670,7 @@ export function ThreadComposer({
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={working ? t("Steer") : t("Send")}
+              accessibilityLabel={steering ? t("Steer") : t("Send")}
               disabled={sending || !canSend}
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               onPress={() => void send()}
@@ -677,7 +679,7 @@ export function ThreadComposer({
               <GlassSurface
                 tint={tokens.primary}
                 style={
-                  working
+                  steering
                     ? {
                         ...composerPillStyle,
                         width: undefined,
@@ -690,7 +692,7 @@ export function ThreadComposer({
                 }
                 fallbackStyle={{ backgroundColor: tokens.primary }}
               >
-                {working ? (
+                {steering ? (
                   <Text style={{ color: tokens.primaryForeground, fontSize: 13 }}>
                     {t("Steer")}
                   </Text>

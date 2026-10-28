@@ -142,6 +142,7 @@ const props: Omit<ComponentProps<typeof ThreadComposer>, "ref"> = {
   botId: "bot-1",
   onCall: false,
   working: false,
+  steering: false,
   sending: false,
   styles: { circleButton: {}, composerFill: {} },
   attachActions: [],
@@ -224,22 +225,30 @@ describe("thread composer isolation", () => {
   it("shows steering only for working sends and restores Send after Stop", () => {
     const send = vi.fn(async () => {});
     const stop = vi.fn(async () => {});
-    render({ working: true, send, stop });
+    render({ working: true, steering: true, send, stop });
     type("Focus on the tests");
     expect(container.querySelector('button[aria-label="Steer"]')!.textContent).toBe("Steer");
     press("Steer");
     expect(send).toHaveBeenCalledOnce();
 
-    render({ working: true, sending: true, send, stop });
+    render({ working: true, steering: true, sending: true, send, stop });
     const sending = container.querySelector<HTMLButtonElement>('button[aria-label="Steer"]')!;
     expect(sending.textContent).toBe("Steer");
     expect(sending.disabled).toBe(true);
 
-    render({ working: true, send, stop });
+    render({ working: true, steering: true, send, stop });
     press("Stop");
     expect(stop).toHaveBeenCalledOnce();
     render({ working: false, send, stop });
     expect(container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Steer");
+  });
+
+  it("keeps Send while a paused run waits for the user", () => {
+    render({ working: true, steering: false });
+    type("Paris");
+    expect(container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    expect(container.querySelector('button[aria-label="Stop"]')).not.toBeNull();
     expect(container.textContent).not.toContain("Steer");
   });
 

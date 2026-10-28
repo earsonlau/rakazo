@@ -921,6 +921,7 @@ function SpaceShell() {
               onImportAgent={(agent) => openImport(agent, false)}
               activeName={inGroup ? (activeGroup?.name ?? activeSnapshot?.groupName) : active?.name}
               running={composerRunning}
+              steering={transcriptRunning}
               disabled={Boolean(recordingSkill)}
               pendingAttachments={composer.activePendingAttachments}
               attachmentNotice={composer.attachmentNotice}

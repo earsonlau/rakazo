@@ -69,6 +69,7 @@ function renderComposer(
     artifactTarget: { botId: "bot-1" },
     activeName: "Ada",
     running: false,
+    steering: false,
     pendingAttachments: [],
     attachmentNotice: null,
     sendError: null,
@@ -104,7 +105,7 @@ function rerenderComposer(overrides: Partial<ComponentProps<typeof Composer>>) {
 it("labels busy sends as steering and returns to Send after stopping", async () => {
   const onSend = vi.fn().mockResolvedValue(true);
   const onStop = vi.fn().mockResolvedValue(undefined);
-  const textarea = renderComposer(onSend, { running: true, onStop });
+  const textarea = renderComposer(onSend, { running: true, steering: true, onStop });
   type(textarea, "Focus on the tests");
   const steer = container!.querySelector<HTMLButtonElement>('button[aria-label="Steer"]')!;
   expect(steer.textContent).toBe("Steer");
@@ -122,8 +123,15 @@ it("labels busy sends as steering and returns to Send after stopping", async () 
     container!.querySelector<HTMLButtonElement>('button[aria-label="Stop"]')!.click(),
   );
   expect(onStop).toHaveBeenCalledOnce();
-  rerenderComposer({ running: false });
+  rerenderComposer({ running: false, steering: false });
   expect(container!.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  expect(container!.textContent).not.toContain("Steer");
+});
+
+it("keeps Send for a paused run waiting on the user", () => {
+  renderComposer(vi.fn(), { running: true, steering: false });
+  expect(container!.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  expect(container!.querySelector('button[aria-label="Stop"]')).not.toBeNull();
   expect(container!.textContent).not.toContain("Steer");
 });
 
@@ -632,7 +640,7 @@ describe("Composer", () => {
   it.each([false, true])(
     "draws an empty send action with the primary disabled tokens (running: %s)",
     (running) => {
-      renderComposer(vi.fn(), { running });
+      renderComposer(vi.fn(), { running, steering: running });
       const send = container?.querySelector<HTMLButtonElement>(
         `button[aria-label="${running ? "Steer" : "Send"}"]`,
       );
