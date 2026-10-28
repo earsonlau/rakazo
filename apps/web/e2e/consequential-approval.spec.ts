@@ -1,6 +1,5 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { createDb } from "../../../packages/db/src/index";
 import {
   activeBotId,
   captureScreenshot,
@@ -14,29 +13,10 @@ test("Ask mode asks before a change, and approvals settings shape what asks", as
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  const email = `action-approvals-${stamp}@rakazo.test`;
-  await signup(page, email, "password12", "Approval UI");
+  await signup(page, `action-approvals-${stamp}@rakazo.test`, "password12", "Approval UI");
   await completeOnboarding(page, testInfo);
 
-  const { prisma, pool } = createDb(process.env.DATABASE_URL!);
-  try {
-    const user = await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } });
-    await prisma.userActionApprovalRule.create({
-      data: {
-        userId: user.id,
-        effect: "require_approval",
-        matchKind: "tool",
-        matchValue: "destination.write",
-      },
-    });
-  } finally {
-    await pool.end();
-  }
-
   await requestDestinationWrite(page, "write this to the destination crm as a note");
-  await expect(page.getByTestId("transcript")).toContainText(
-    'Saved rule: ask before tool "destination.write".',
-  );
   const allowOnce = page.getByRole("button", { name: "Allow once", exact: true });
   const alwaysAllow = page.getByRole("button", { name: "Always allow this tool", exact: true });
   const deny = page.getByRole("button", { name: "Deny", exact: true });

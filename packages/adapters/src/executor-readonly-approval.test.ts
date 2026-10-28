@@ -779,15 +779,6 @@ describe("connector read-only metadata and approval enforcement", () => {
       expect(f.execute).not.toHaveBeenCalled();
       expect(f.effects).toHaveLength(1);
       expect(f.pauseRunForInput).toHaveBeenCalledOnce();
-      expect(f.pauseRunForInput).toHaveBeenCalledWith(
-        expect.objectContaining({
-          blocks: [
-            expect.objectContaining({
-              detail: expect.stringContaining('Saved rule: ask before tool "demo_get_item".'),
-            }),
-          ],
-        }),
-      );
     });
 
     it("replays the approved arguments once and returns the result on retry", async () => {
@@ -973,7 +964,6 @@ describe("connector read-only metadata and approval enforcement", () => {
       await f.run();
       expect(f.execute).not.toHaveBeenCalled();
       expect(f.pauseRunForInput).toHaveBeenCalledOnce();
-      expect(JSON.stringify(f.pauseRunForInput.mock.calls[0])).not.toContain("Saved rule:");
     });
 
     it("forces owner approval for webhook-triggered writes despite an allow rule", async () => {
@@ -2484,32 +2474,6 @@ describe("user_computer_shell", () => {
     expect(f.effects.map((effect) => effect.status)).toEqual(["completed", "completed"]);
   });
 
-  it("names an ask rule on the computer approval card", async () => {
-    const f = fixture({
-      ...ownRun,
-      userDevices: devices().gateway,
-      rules: [
-        {
-          effect: "require_approval",
-          matchKind: "tool",
-          matchValue: "user_computer_shell",
-        },
-      ],
-    });
-    f.setCalls([call("ssh pi.local hostname")]);
-    await f.run();
-    expect(f.pauseRunForInput).toHaveBeenCalledWith(
-      expect.objectContaining({
-        blocks: [
-          expect.objectContaining({
-            kind: "ask",
-            detail: 'Saved rule: ask before tool "user_computer_shell".\n\nssh pi.local hostname',
-          }),
-        ],
-      }),
-    );
-  });
-
   it("refuses with a block rule", async () => {
     const f = fixture({
       ...ownRun,
@@ -2520,7 +2484,7 @@ describe("user_computer_shell", () => {
     await f.run();
     expect(f.results[0]).toEqual({ error: expect.stringContaining("is blocked in this space") });
     expect(f.results[0]).toEqual({
-      error: expect.stringContaining('Saved rule: block tool "user_computer_shell".'),
+      error: expect.stringContaining('blocked in this space by the saved rule "User computer shell".'),
     });
     expect(f.pauseRunForInput).not.toHaveBeenCalled();
   });

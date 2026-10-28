@@ -14,6 +14,7 @@ import {
   connectorToolRequiresApproval,
   decisiveActionApprovalRules,
   displayName,
+  humanizeToolName,
   newSiteOutcome,
   outboundSiteGate,
   planActionGate,
@@ -282,18 +283,11 @@ export async function gateToolCall(
           newDestination: siteGate === "new",
         });
   if (plan === "deny") {
-    const ruleReason = savedRuleReason(approvalResolved);
     return {
       result: {
         error:
           approvalResolved.decision === "deny"
-            ? [
-                `${name} is blocked in this space.`,
-                ruleReason,
-                "Don't try it another way; tell the user it's blocked.",
-              ]
-                .filter(Boolean)
-                .join(" ")
+            ? `${name} is blocked in this space${blockingRuleSuffix(approvalResolved)}. Don't try it another way; tell the user it's blocked.`
             : `${name} needs the owner's approval because it could have been asked for by someone else, and this space never asks. Don't retry; tell the user.`,
       },
     };
@@ -410,11 +404,7 @@ export async function gateToolCall(
     nextApprovedTool,
     bypassApproval: gateDecision === "allow" && gated,
   });
-  const card = {
-    reviewReason:
-      [reviewReason, savedRuleReason(approvalResolved)].filter(Boolean).join("\n") || undefined,
-    summary: request.fleetSummary,
-  };
+  const card = { reviewReason, summary: request.fleetSummary };
 
   if (applied?.duplicate) {
     const gate = resolveDuplicateEffectGate(applied.effect, name);
@@ -494,17 +484,13 @@ export async function gateToolCall(
   return { call };
 }
 
-function savedRuleReason(
-  resolved: ReturnType<typeof resolveActionApprovalForTools>,
-): string | undefined {
-  const rules = decisiveActionApprovalRules(resolved);
-  if (rules.length === 0) return undefined;
-  const action = resolved.source === "deny" ? "block" : "ask before";
-  const targets = rules.map((rule) => {
-    const value = rule.matchValue.trim().replace(/\s+/g, " ") || "this action";
-    return `${rule.matchKind} ${JSON.stringify(value)}`;
+function blockingRuleSuffix(resolved: ReturnType<typeof resolveActionApprovalForTools>): string {
+  const labels = decisiveActionApprovalRules(resolved).map((rule) => {
+    const value = rule.matchValue.trim().replace(/\s+/g, " ");
+    return JSON.stringify(rule.matchKind === "site" ? value : humanizeToolName(value));
   });
-  return `Saved rule: ${action} ${targets.join(", ")}.`;
+  if (labels.length === 0) return "";
+  return ` by the saved ${labels.length === 1 ? "rule" : "rules"} ${labels.join(", ")}`;
 }
 
 function createToolCall(

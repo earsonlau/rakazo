@@ -15,6 +15,8 @@ export const MAX_APPROVAL_SUMMARY_LENGTH = 500;
 export const MAX_APPROVAL_DETAIL_LENGTH = 4_000;
 /** Longer fetch URLs are refused, so an approval card always shows the whole URL it sends. */
 export const MAX_FETCH_URL_LENGTH = 2_048;
+/** These send data to the site their url names, so a site the run was not given is gated. */
+export const SITE_SENDING_TOOLS: ReadonlySet<string> = new Set(["web_fetch", "paid_request"]);
 
 /** A fleet card built from the resolved request: a title and the lines under it. */
 export type FleetCardSummary = { title: string; lines: string[] };
@@ -43,10 +45,7 @@ export function buildApprovalAskBlock(
       approvalEffectId: effectId,
       text: truncate(redactSecrets(options.summary.title, secrets), MAX_APPROVAL_SUMMARY_LENGTH),
       detail: truncate(
-        redactSecrets(
-          withReviewReason(options.reviewReason, options.summary.lines.join("\n")),
-          secrets,
-        ),
+        redactSecrets(options.summary.lines.join("\n"), secrets),
         approvalDetailLength(toolName),
       ),
       detailFormat: toolName === "set_child_instructions" ? "code" : "text",
@@ -69,15 +68,9 @@ export function buildApprovalAskBlock(
         `${args.accept === true ? "Approve" : "Decline"} connection with “${name}”?`,
         secrets,
       ),
-      detail: truncate(
-        redactSecrets(
-          withReviewReason(
-            options?.reviewReason,
-            `${messagingProviderName(String(args.requester_provider ?? ""))}: ${String(args.requester_address ?? "").replace(/[\r\n]/g, " ")}`,
-          ),
-          secrets,
-        ),
-        MAX_APPROVAL_DETAIL_LENGTH,
+      detail: redactSecrets(
+        `${messagingProviderName(String(args.requester_provider ?? ""))}: ${String(args.requester_address ?? "").replace(/[\r\n]/g, " ")}`,
+        secrets,
       ),
       detailFormat: "text",
       status: "pending",
@@ -95,10 +88,7 @@ export function buildApprovalAskBlock(
       kind: "ask",
       approvalEffectId: effectId,
       text: "Update instructions?",
-      detail: redactSecrets(
-        withReviewReason(options?.reviewReason, instructionUpdateDiff(before, after, reason)),
-        secrets,
-      ),
+      detail: instructionUpdateDiff(before, after, reason),
       instructionUpdate: {
         botId: String(args.botId ?? ""),
         before,
@@ -120,10 +110,7 @@ export function buildApprovalAskBlock(
       approvalEffectId: effectId,
       text: "Run on your computer?",
       detail: truncate(
-        redactSecrets(
-          withReviewReason(options?.reviewReason, `${cwd}${String(args.command ?? "")}`),
-          secrets,
-        ),
+        redactSecrets(`${cwd}${String(args.command ?? "")}`, secrets),
         MAX_APPROVAL_DETAIL_LENGTH,
       ),
       detailFormat: "code",
@@ -174,7 +161,9 @@ export function buildApprovalAskBlock(
 }
 
 function webFetchSite(toolName: string, args: Record<string, unknown>): string | undefined {
-  return toolName === "web_fetch" && typeof args.url === "string" ? urlSite(args.url) : undefined;
+  return SITE_SENDING_TOOLS.has(toolName) && typeof args.url === "string"
+    ? urlSite(args.url)
+    : undefined;
 }
 
 function describeApprovalAction(toolName: string, args: Record<string, unknown>): string {
@@ -208,10 +197,9 @@ function formatApprovalDetail(
     );
   }
   // A fetch carries data in its path and query, so the card shows the whole URL.
-  const keys =
-    toolName === "web_fetch"
-      ? ["url"]
-      : ["collection", "title", "to", "recipient_email", "cc", "bcc", "subject", "amount", "body"];
+  const keys = SITE_SENDING_TOOLS.has(toolName)
+    ? ["url", "method", "body"]
+    : ["collection", "title", "to", "recipient_email", "cc", "bcc", "subject", "amount", "body"];
   const pushArgs = (values: Record<string, unknown>) => {
     for (const key of keys) {
       const value = values[key];
@@ -231,11 +219,6 @@ function formatApprovalDetail(
   }
   if (lines.length === 0) return undefined;
   return lines.join("\n");
-}
-
-function withReviewReason(reviewReason: string | undefined, detail: string): string {
-  const reason = reviewReason?.trim().replace(/\u2014|\u2013/g, "-");
-  return [reason, detail].filter(Boolean).join("\n\n");
 }
 
 /** A batch entry's arguments, which Composio accepts as an object or a JSON string. */
