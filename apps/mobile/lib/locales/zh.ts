@@ -1131,9 +1131,6 @@ export const ZH_MESSAGES: Record<string, string> = {
   "Could not preview rule": "无法预览规则",
   Current: "当前",
   "No matching rule": "未匹配规则",
-  Preview: "预览",
-  "Rule matching only. Runtime safety checks still apply.":
-    "仅检查规则匹配，执行时仍会进行安全检查。",
   "Test rule": "测试规则",
   "Tool name": "工具名",
   Wallet: "钱包",

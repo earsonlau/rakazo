@@ -1143,9 +1143,6 @@ export const DE_MESSAGES: Record<string, string> = {
   "Could not preview rule": "Regelvorschau fehlgeschlagen",
   Current: "Aktuell",
   "No matching rule": "Keine passende Regel",
-  Preview: "Vorschau",
-  "Rule matching only. Runtime safety checks still apply.":
-    "Nur Regelabgleich. Sicherheitsprüfungen zur Laufzeit gelten weiterhin.",
   "Test rule": "Regel testen",
   "Tool name": "Werkzeugname",
   Wallet: "Wallet",

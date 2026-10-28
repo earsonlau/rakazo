@@ -66,9 +66,6 @@ export function ApprovalRulePreview({
         }
       }}
     >
-      <p className="text-[13px] text-muted-foreground">
-        <Trans>Rule matching only. Runtime safety checks still apply.</Trans>
-      </p>
       <Input
         aria-label={t`Tool name`}
         placeholder={t`Tool name`}

@@ -63,9 +63,6 @@ export function ApprovalRulePreviewForm({
   }
   return (
     <View style={{ gap: 12, padding: 16 }}>
-      <Text style={{ color: tokens.mutedForeground }}>
-        {t("Rule matching only. Runtime safety checks still apply.")}
-      </Text>
       <TextInput
         accessibilityLabel={t("Tool name")}
         placeholder={t("Tool name")}

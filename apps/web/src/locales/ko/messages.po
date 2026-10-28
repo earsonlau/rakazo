@@ -4934,10 +4934,6 @@ msgstr ""
 msgid "Row"
 msgstr "행"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "규칙 일치만 확인합니다. 실행 시 안전 검사는 계속 적용됩니다."
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "실행 시간"

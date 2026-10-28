@@ -4935,10 +4935,6 @@ msgstr "在你離線時執行的例行任務"
 msgid "Row"
 msgstr "列"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "僅檢查規則匹配，執行時仍會進行安全檢查。"
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "執行時間"

@@ -4934,10 +4934,6 @@ msgstr ""
 msgid "Row"
 msgstr "Строка"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "Только сопоставление правил. Проверки безопасности при выполнении сохраняются."
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "Запустить в"

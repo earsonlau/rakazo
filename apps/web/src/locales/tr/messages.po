@@ -4934,10 +4934,6 @@ msgstr ""
 msgid "Row"
 msgstr "Satır"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "Yalnızca kural eşleştirmesi. Çalışma zamanı güvenlik kontrolleri geçerliliğini korur."
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr ""

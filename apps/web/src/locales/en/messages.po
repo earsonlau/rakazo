@@ -4934,10 +4934,6 @@ msgstr "Routines that run while you're away"
 msgid "Row"
 msgstr "Row"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "Rule matching only. Runtime safety checks still apply."
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "Run at"

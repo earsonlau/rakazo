@@ -4934,10 +4934,6 @@ msgstr "不在中に実行されるルーティン"
 msgid "Row"
 msgstr "行"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "ルールの照合のみです。実行時の安全確認は引き続き適用されます。"
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "実行日時"

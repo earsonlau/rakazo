@@ -1135,9 +1135,6 @@ export const NL_MESSAGES: Record<string, string> = {
   "Could not preview rule": "Regelvoorbeeld kon niet worden geladen",
   Current: "Huidig",
   "No matching rule": "Geen overeenkomende regel",
-  Preview: "Voorbeeld",
-  "Rule matching only. Runtime safety checks still apply.":
-    "Alleen regelvergelijking. Veiligheidscontroles bij uitvoering blijven gelden.",
   "Test rule": "Regel testen",
   "Tool name": "Toolnaam",
   Wallet: "Wallet",

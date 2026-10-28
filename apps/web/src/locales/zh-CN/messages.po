@@ -4934,10 +4934,6 @@ msgstr ""
 msgid "Row"
 msgstr "行"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "仅检查规则匹配，执行时仍会进行安全检查。"
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "运行时间"

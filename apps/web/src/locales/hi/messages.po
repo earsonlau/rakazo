@@ -4934,10 +4934,6 @@ msgstr ""
 msgid "Row"
 msgstr "पंक्ति"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "केवल नियमों का मिलान। चलाते समय सुरक्षा जाँच लागू रहेंगी।"
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr ""

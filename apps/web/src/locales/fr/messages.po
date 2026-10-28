@@ -4934,10 +4934,6 @@ msgstr ""
 msgid "Row"
 msgstr "Ligne"
 
-#: src/components/ApprovalRulePreview.tsx
-msgid "Rule matching only. Runtime safety checks still apply."
-msgstr "Correspondance des règles uniquement. Les contrôles de sécurité à l’exécution restent applicables."
-
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
 msgstr "Exécuter à"

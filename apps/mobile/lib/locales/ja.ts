@@ -1167,9 +1167,6 @@ export const JA_MESSAGES: Record<string, string> = {
   "Could not preview rule": "ルールをプレビューできませんでした",
   Current: "現在",
   "No matching rule": "一致するルールなし",
-  Preview: "プレビュー",
-  "Rule matching only. Runtime safety checks still apply.":
-    "ルールの照合のみです。実行時の安全確認は引き続き適用されます。",
   "Test rule": "ルールを試す",
   "Tool name": "ツール名",
   Wallet: "ウォレット",
