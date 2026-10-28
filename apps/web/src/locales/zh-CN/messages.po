@@ -4895,7 +4895,7 @@ msgstr ""
 
 #: src/components/teach/TeachRecordingChrome.tsx
 msgid "Type without recording"
-msgstr "输入且不录制"
+msgstr "不录制直接输入"
 
 #: src/components/AskCard.tsx
 msgid "Type your answer"
