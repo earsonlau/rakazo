@@ -98,7 +98,7 @@ msgstr ""
 
 #: src/lib/billing.ts
 msgid "{amount} / {period}"
-msgstr ""
+msgstr "{amount} / {period}"
 
 #: src/pages/Shell.tsx
 msgid "{botName}’s computer"
@@ -110,19 +110,19 @@ msgstr "{commandVariable} 是保留名称，不能用作命令变量。请选择
 
 #: src/lib/billing.ts
 msgid "{count} days"
-msgstr ""
+msgstr "{count} 天"
 
 #: src/lib/billing.ts
 msgid "{count} months"
-msgstr ""
+msgstr "{count} 个月"
 
 #: src/lib/billing.ts
 msgid "{count} weeks"
-msgstr ""
+msgstr "{count} 周"
 
 #: src/lib/billing.ts
 msgid "{count} years"
-msgstr ""
+msgstr "{count} 年"
 
 #: src/lib/relative-time.ts
 #: src/pages/ActivityList.tsx
@@ -606,7 +606,7 @@ msgstr "已回答：{answer}"
 
 #: src/pages/Paywall.tsx
 msgid "Any model, with your own key"
-msgstr ""
+msgstr "任意模型，使用你自己的密钥"
 
 #: src/components/SoftwareUpdateSection.tsx
 msgid "API is back, but the update did not finish. Check the host logs."
@@ -817,7 +817,7 @@ msgstr "Bearer token"
 
 #: src/pages/SettingsOverlay.tsx
 msgid "Billing"
-msgstr ""
+msgstr "账单"
 
 #: src/lib/ticket-status.ts
 msgid "Blocked"
@@ -878,7 +878,7 @@ msgstr "Bot 正在工作"
 
 #: src/pages/Paywall.tsx
 msgid "Bots with their own computer and browser"
-msgstr ""
+msgstr "每个 Bot 都有自己的电脑和浏览器"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Brain label"
@@ -954,7 +954,7 @@ msgstr "取消回复"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Canceled"
-msgstr ""
+msgstr "已取消"
 
 #: src/components/CloudAgentCard.tsx
 msgid "cancelled"
@@ -1590,7 +1590,7 @@ msgstr "无法加载备用模型。"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Could not load billing"
-msgstr ""
+msgstr "无法加载账单"
 
 #: src/pages/IntegrationSetup.tsx
 msgid "Could not load bots. Reload to try again."
@@ -1657,7 +1657,7 @@ msgstr "无法退出登录。请重试。"
 #: src/pages/BillingSettingsPanel.tsx
 #: src/pages/Paywall.tsx
 msgid "Could not open billing"
-msgstr ""
+msgstr "无法打开账单"
 
 #: src/components/computer/FilesApp.tsx
 msgid "Could not open file"
@@ -2247,7 +2247,7 @@ msgstr "需要验证邮箱"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Ends {day}"
-msgstr ""
+msgstr "{day} 结束"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Engage when... Ignore..."
@@ -2645,7 +2645,7 @@ msgstr ""
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Inactive"
-msgstr ""
+msgstr "未启用"
 
 #: src/pages/shell/message-cards.tsx
 msgid "Inbox & email"
@@ -2913,11 +2913,11 @@ msgstr "请确认这台电脑上没有仍在运行的任务。"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Manage"
-msgstr ""
+msgstr "管理"
 
 #: src/pages/Paywall.tsx
 msgid "Manage billing"
-msgstr ""
+msgstr "管理账单"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manage MCP servers"
@@ -3138,7 +3138,7 @@ msgstr "模型列表正常。{modelCount, plural, one {# 个模型} other {# 个
 
 #: src/lib/billing.ts
 msgid "month"
-msgstr ""
+msgstr "月"
 
 #: src/pages/RoutineSchedule.tsx
 msgid "Monthly"
@@ -3592,7 +3592,7 @@ msgstr "两次密码不一致"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Past due"
-msgstr ""
+msgstr "逾期未付"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/VoiceSettingsOverlay.tsx
@@ -3928,7 +3928,7 @@ msgstr "重命名工作区"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Renews {day}"
-msgstr ""
+msgstr "{day} 续订"
 
 #: src/pages/ScratchpadSection.tsx
 msgid "Reopen"
@@ -4082,7 +4082,7 @@ msgstr "例行任务"
 
 #: src/pages/Paywall.tsx
 msgid "Routines that run while you're away"
-msgstr ""
+msgstr "你离开后仍会运行的例行任务"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Run at"
@@ -4525,7 +4525,7 @@ msgstr "SSO 暂时不可用，请重试。"
 
 #: src/pages/Paywall.tsx
 msgid "Start {trialDays}-day free trial"
-msgstr ""
+msgstr "开始 {trialDays} 天免费试用"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Start recording"
@@ -4587,11 +4587,11 @@ msgstr "提交"
 
 #: src/pages/Paywall.tsx
 msgid "Subscribe"
-msgstr ""
+msgstr "订阅"
 
 #: src/pages/Paywall.tsx
 msgid "Subscription required"
-msgstr ""
+msgstr "需要订阅"
 
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/Onboarding.tsx
@@ -4874,11 +4874,11 @@ msgstr "Treg token"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Trial"
-msgstr ""
+msgstr "试用"
 
 #: src/pages/BillingSettingsPanel.tsx
 msgid "Trial ends {day}"
-msgstr ""
+msgstr "试用 {day} 结束"
 
 #: src/pages/ActivityList.tsx
 #: src/pages/Onboarding.tsx
@@ -5109,7 +5109,7 @@ msgstr "等待中…"
 
 #: src/pages/Paywall.tsx
 msgid "Web, desktop and mobile apps"
-msgstr ""
+msgstr "Web、桌面和移动应用"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Webhook"
@@ -5121,7 +5121,7 @@ msgstr ""
 
 #: src/lib/billing.ts
 msgid "week"
-msgstr ""
+msgstr "周"
 
 #: src/pages/RoutineEditor.tsx
 #: src/pages/RoutineSchedule.tsx
@@ -5195,7 +5195,7 @@ msgstr ""
 
 #: src/lib/billing.ts
 msgid "year"
-msgstr ""
+msgstr "年"
 
 #: src/pages/Shell.tsx
 #: src/pages/shell/chat-context.tsx
