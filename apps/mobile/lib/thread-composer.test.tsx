@@ -221,6 +221,28 @@ describe("thread composer isolation", () => {
     act(() => input.select({ nativeEvent: { selection: { start, end } } }));
   }
 
+  it("shows steering only for working sends and restores Send after Stop", () => {
+    const send = vi.fn(async () => {});
+    const stop = vi.fn(async () => {});
+    render({ working: true, send, stop });
+    type("Focus on the tests");
+    expect(container.querySelector('button[aria-label="Steer"]')!.textContent).toBe("Steer");
+    press("Steer");
+    expect(send).toHaveBeenCalledOnce();
+
+    render({ working: true, sending: true, send, stop });
+    const sending = container.querySelector<HTMLButtonElement>('button[aria-label="Steer"]')!;
+    expect(sending.textContent).toBe("Steer");
+    expect(sending.disabled).toBe(true);
+
+    render({ working: true, send, stop });
+    press("Stop");
+    expect(stop).toHaveBeenCalledOnce();
+    render({ working: false, send, stop });
+    expect(container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Steer");
+  });
+
   it("keeps inserted text when removing a chip afterwards", () => {
     type("ask @He");
     press("@{name}");

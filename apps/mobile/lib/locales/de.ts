@@ -335,6 +335,7 @@ export const DE_MESSAGES: Record<string, string> = {
   Running: "Läuft",
   Saved: "Gespeichert",
   Send: "Senden",
+  Steer: "Nachsteuern",
   "Send answer": "Antwort senden",
   "Sending…": "Wird gesendet…",
   "Show {label}": "{label} anzeigen",

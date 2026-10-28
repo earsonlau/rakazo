@@ -415,7 +415,7 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
     timeout: 30_000,
   });
   await expect(composer).toHaveAttribute("placeholder", "Message Chief");
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Steer", exact: true })).toBeVisible();
   const holdToTalk = page
     .getByTestId("composer-bar")
     .getByRole("button", { name: "Hold to talk", exact: true });
@@ -423,7 +423,7 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   await composer.fill("Use the newer report and keep the answer short.");
   await expect(holdToTalk).toHaveCount(0);
   await composer.press("Tab");
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Steer", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(
     page.getByTestId("transcript").getByText("Use the newer report and keep the answer short."),
@@ -431,7 +431,7 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "14-active-bot-work");
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Steer", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   await expect(composer).toHaveAttribute("placeholder", "Message Chief");
   await captureScreenshot(page, testInfo, "14-active-bot-work-mobile");
@@ -452,7 +452,7 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   });
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await stopRequestStarted;
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Steer", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeDisabled();
   releaseStopRequest();
   // Idle Send stays disabled with an empty draft; wait for Stop to leave instead.

@@ -330,6 +330,7 @@ export const NL_MESSAGES: Record<string, string> = {
   Running: "Draait",
   Saved: "Opgeslagen",
   Send: "Verzenden",
+  Steer: "Bijsturen",
   "Send answer": "Antwoord verzenden",
   "Sending…": "Bezig met verzenden…",
   "Show {label}": "{label} tonen",

@@ -5514,6 +5514,10 @@ msgstr "正在開始…"
 msgid "Status"
 msgstr "狀態"
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "調整方向"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "步驟"

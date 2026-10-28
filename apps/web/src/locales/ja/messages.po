@@ -5513,6 +5513,10 @@ msgstr "開始中…"
 msgid "Status"
 msgstr "ステータス"
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "軌道修正"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "手順"

@@ -605,6 +605,7 @@ export const ZH_TW_MESSAGES: Record<string, string> = {
   "Searching…": "正在搜尋…",
   "Section name": "分組名稱",
   Send: "傳送",
+  Steer: "調整方向",
   "Send reset link": "傳送重設連結",
   "Send answer": "傳送回答",
   "Sending…": "正在傳送…",

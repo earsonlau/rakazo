@@ -5513,6 +5513,10 @@ msgstr "מתחיל…"
 msgid "Status"
 msgstr "סטטוס"
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "שינוי כיוון"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "שלבים"

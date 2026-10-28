@@ -5513,6 +5513,10 @@ msgstr "시작하는 중…"
 msgid "Status"
 msgstr ""
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "방향 조정"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "실행 단계"

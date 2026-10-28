@@ -958,13 +958,14 @@ export const Composer = memo(function Composer({
                 <HoldToTalkControls talk={talk} disabled={disabled || onCall} />
               ) : null}
               <Button
-                size="icon"
-                aria-label={t`Send`}
+                size="sm"
+                aria-label={t`Steer`}
                 disabled={sending || !canSend || disabled}
                 onClick={() => void send()}
-                className="size-8 shrink-0 rounded-full transition-transform active:scale-95 disabled:bg-primary-disabled disabled:text-foreground/30 disabled:opacity-100"
+                className="h-8 shrink-0 rounded-full transition-transform active:scale-95 disabled:bg-primary-disabled disabled:text-foreground/30 disabled:opacity-100"
               >
                 <ArrowUp size={16} strokeWidth={2.2} />
+                {t`Steer`}
               </Button>
               <Button
                 variant="outline"

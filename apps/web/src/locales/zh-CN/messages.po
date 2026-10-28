@@ -5513,6 +5513,10 @@ msgstr "正在开始…"
 msgid "Status"
 msgstr "状态"
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "调整方向"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "步骤"

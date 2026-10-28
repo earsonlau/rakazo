@@ -318,6 +318,7 @@ export const JA_MESSAGES: Record<string, string> = {
   Running: "実行中",
   Saved: "保存しました",
   Send: "送信",
+  Steer: "軌道修正",
   "Send answer": "回答を送信",
   "Sending…": "送信中…",
   "Show {label}": "{label}を表示",

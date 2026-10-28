@@ -5513,6 +5513,10 @@ msgstr "शुरू हो रहा है…"
 msgid "Status"
 msgstr ""
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "दिशा बदलें"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "चरण"

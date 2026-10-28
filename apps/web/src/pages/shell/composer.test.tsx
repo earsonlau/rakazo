@@ -101,6 +101,32 @@ function rerenderComposer(overrides: Partial<ComponentProps<typeof Composer>>) {
   act(() => root?.render(<Composer {...composerProps} />));
 }
 
+it("labels busy sends as steering and returns to Send after stopping", async () => {
+  const onSend = vi.fn().mockResolvedValue(true);
+  const onStop = vi.fn().mockResolvedValue(undefined);
+  const textarea = renderComposer(onSend, { running: true, onStop });
+  type(textarea, "Focus on the tests");
+  const steer = container!.querySelector<HTMLButtonElement>('button[aria-label="Steer"]')!;
+  expect(steer.textContent).toBe("Steer");
+  expect(steer.disabled).toBe(false);
+  await act(async () => steer.click());
+  expect(onSend).toHaveBeenCalledWith("Focus on the tests", [], expect.any(String));
+
+  rerenderComposer({ sending: true });
+  const sending = container!.querySelector<HTMLButtonElement>('button[aria-label="Steer"]')!;
+  expect(sending.textContent).toBe("Steer");
+  expect(sending.disabled).toBe(true);
+
+  rerenderComposer({ sending: false });
+  await act(async () =>
+    container!.querySelector<HTMLButtonElement>('button[aria-label="Stop"]')!.click(),
+  );
+  expect(onStop).toHaveBeenCalledOnce();
+  rerenderComposer({ running: false });
+  expect(container!.querySelector('button[aria-label="Send"]')).not.toBeNull();
+  expect(container!.textContent).not.toContain("Steer");
+});
+
 it("shows a readable run error with raw details, while preserving send errors", () => {
   const runError = '429: {"message":"Too many requests","metadata":{"provider":"OpenRouter"}}';
   renderComposer(async () => true, { runError, runErrorId: "failed-run" });
@@ -604,10 +630,12 @@ describe("Composer", () => {
   });
 
   it.each([false, true])(
-    "draws an idle Send button with the primary disabled tokens (running: %s)",
+    "draws an empty send action with the primary disabled tokens (running: %s)",
     (running) => {
       renderComposer(vi.fn(), { running });
-      const send = container?.querySelector<HTMLButtonElement>('button[aria-label="Send"]');
+      const send = container?.querySelector<HTMLButtonElement>(
+        `button[aria-label="${running ? "Steer" : "Send"}"]`,
+      );
       expect(send?.disabled).toBe(true);
       expect(send?.className.split(" ")).toEqual(
         expect.arrayContaining([

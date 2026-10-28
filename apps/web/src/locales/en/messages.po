@@ -5513,6 +5513,10 @@ msgstr "Starting…"
 msgid "Status"
 msgstr "Status"
 
+#: src/pages/shell/composer.tsx
+msgid "Steer"
+msgstr "Steer"
+
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Steps"
 msgstr "Steps"

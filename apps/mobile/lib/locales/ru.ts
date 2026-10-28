@@ -648,6 +648,7 @@ export const RU_MESSAGES: Record<string, string> = {
   "Searching…": "Поиск…",
   "Section name": "Название раздела",
   Send: "Отправить",
+  Steer: "Скорректировать",
   "Send reset link": "Отправить ссылку для сброса",
   "Send answer": "Отправить ответ",
   "Sending…": "Отправка…",

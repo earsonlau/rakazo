@@ -668,7 +668,7 @@ export function ThreadComposer({
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={t("Send")}
+              accessibilityLabel={working ? t("Steer") : t("Send")}
               disabled={sending || !canSend}
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               onPress={() => void send()}
@@ -676,15 +676,32 @@ export function ThreadComposer({
             >
               <GlassSurface
                 tint={tokens.primary}
-                style={composerPillStyle}
+                style={
+                  working
+                    ? {
+                        ...composerPillStyle,
+                        width: undefined,
+                        height: undefined,
+                        minHeight: 28,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                      }
+                    : composerPillStyle
+                }
                 fallbackStyle={{ backgroundColor: tokens.primary }}
               >
-                <NativeSymbol
-                  ios="arrow.up"
-                  android="arrow-up"
-                  size={15}
-                  color={tokens.primaryForeground}
-                />
+                {working ? (
+                  <Text style={{ color: tokens.primaryForeground, fontSize: 13 }}>
+                    {t("Steer")}
+                  </Text>
+                ) : (
+                  <NativeSymbol
+                    ios="arrow.up"
+                    android="arrow-up"
+                    size={15}
+                    color={tokens.primaryForeground}
+                  />
+                )}
               </GlassSurface>
             </Pressable>
           )}
