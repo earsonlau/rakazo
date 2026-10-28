@@ -112,7 +112,6 @@ describe("lingui catalogs", () => {
         "Edit label",
         "Edit name",
         "Enable {0}",
-        "Encrypted and never shown again",
         "Model connections",
         "Permissions",
         "Skills",
@@ -139,7 +138,9 @@ describe("lingui catalogs", () => {
       "Command variable",
       "Available to shell commands as {commandVariable}",
       "{commandVariable} is reserved and cannot be used as a command variable. Choose another name.",
-      "Encrypted and never shown again",
+      "Show",
+      "Hide",
+      "Could not show the credential",
     ];
     for (const locale of [
       "en",

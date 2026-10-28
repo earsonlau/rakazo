@@ -97,13 +97,10 @@ function fixture({
   userDevices,
   botUserId = "user-1",
 }: {
-  /** The run starter's desktop connection. */
   userDevices?: UserDeviceGateway;
   /** The bot's owner; runs are started by user-1. */
   botUserId?: string;
-  /** Apps connected through Composio. */
   connectedApps?: string[];
-  /** The bot's routines, as the owner wrote them. */
   routines?: { name: string; prompt: string }[];
   /** Adds `demo_get_other`, a read on a separate installed resource with the same name prefix. */
   secondResource?: boolean;
@@ -366,7 +363,6 @@ function fixture({
     taughtSkill: { findMany: vi.fn(async () => []) },
     chatGroup: { findMany: vi.fn(async () => []) },
     botSection: { findMany: vi.fn(async () => []) },
-    agentSecret: { findMany: vi.fn(async () => []) },
     vaultCredential: { findMany: vi.fn(async () => []) },
     agentSkill: { findMany: vi.fn(async () => []) },
     scratchpadItem: { findMany: vi.fn(async () => []) },

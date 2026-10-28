@@ -1,5 +1,5 @@
 import { MenuView } from "@expo/ui/community/menu";
-import type { ActionApprovalRule, ActionAutoReviewSettings, ApprovalMode } from "@rakazo/contracts";
+import type { ActionApprovalRule } from "@rakazo/contracts";
 import { humanizeToolName } from "@rakazo/core";
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -7,8 +7,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApprovalRulePreviewForm } from "../../components/approval-rule-preview";
 import { LoadFailure } from "../../components/load-failure";
-import { NativeSegmentedControl } from "../../components/native-segmented-control";
-import { SettingsFooter, SettingsGroup, SettingsRow } from "../../components/settings-group";
+import { SettingsGroup, SettingsRow } from "../../components/settings-group";
 import { mobileTokens } from "../../lib/appearance";
 import { useI18n } from "../../lib/i18n";
 import { native, useResolvedAppearance, useThemedStyles } from "../../lib/native";
@@ -19,11 +18,11 @@ import { errorText } from "../../lib/user-error";
 type RuleAction = "always_allow" | "deny" | "remove";
 
 /**
- * How bots ask before acting, and the tools and sites always allowed or blocked. Rules come from
- * approval cards, so this screen only switches or removes them. Opened with a Space, it edits that
- * Space's override instead of the account's.
+ * The tools and sites always allowed or blocked. Rules come from approval cards, so this screen
+ * only switches or removes them; the approval mode itself is a row in settings. Opened with a
+ * Space, it edits that Space's override instead of the account's.
  */
-export default function Approvals() {
+export default function ApprovalRules() {
   const { spaceId } = useLocalSearchParams<{ spaceId?: string }>();
   const target = useMemo(() => settingsTarget(spaceId), [spaceId]);
   const rpc = useMemo(() => settingsRpc(target), [target]);
@@ -32,8 +31,8 @@ export default function Approvals() {
   const colorScheme = useResolvedAppearance();
   const sideInsets = useSideInsets();
   const styles = useThemedStyles(createStyles);
-  const [settings, setSettings] = useState<ActionAutoReviewSettings | null>(null);
-  const [rules, setRules] = useState<ActionApprovalRule[]>([]);
+  // Null until the first load lands.
+  const [rules, setRules] = useState<ActionApprovalRule[] | null>(null);
   const [pending, setPending] = useState(false);
   const [previewRule, setPreviewRule] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,10 +45,9 @@ export default function Approvals() {
     useCallback(() => {
       let current = true;
       const savesAtRead = saves.current;
-      void Promise.all([rpc("autoReview/get", { scope }), rpc("approvalRules/list", { scope })])
-        .then(([nextSettings, nextRules]) => {
+      void rpc("approvalRules/list", { scope })
+        .then((nextRules) => {
           if (!current || saves.current !== savesAtRead) return;
-          setSettings(nextSettings);
           setRules(nextRules);
           setLoadError(null);
         })
@@ -76,14 +74,11 @@ export default function Approvals() {
     }
   }
 
-  const setMode = (mode: ApprovalMode) =>
-    save(async () => setSettings(await rpc("autoReview/set", { scope, mode })));
-
   const applyRuleAction = (rule: ActionApprovalRule, action: RuleAction) =>
     save(async () => {
       if (action === "remove") {
         await rpc("approvalRules/remove", { scope, id: rule.id });
-        setRules((current) => current.filter((entry) => entry.id !== rule.id));
+        setRules((current) => current?.filter((entry) => entry.id !== rule.id) ?? null);
         return;
       }
       if (action === rule.effect || rule.matchKind === "category") return;
@@ -94,29 +89,22 @@ export default function Approvals() {
         matchValue: rule.matchValue,
       });
       // Saving replaces any other effect on the same match.
-      setRules((current) =>
-        current.flatMap((entry) => {
-          if (entry.id === rule.id) return [saved];
-          const sameMatch =
-            entry.matchKind === rule.matchKind && entry.matchValue === rule.matchValue;
-          return sameMatch ? [] : [entry];
-        }),
+      setRules(
+        (current) =>
+          current?.flatMap((entry) => {
+            if (entry.id === rule.id) return [saved];
+            const sameMatch =
+              entry.matchKind === rule.matchKind && entry.matchValue === rule.matchValue;
+            return sameMatch ? [] : [entry];
+          }) ?? null,
       );
     });
 
   const effectLabel = (effect: ActionApprovalRule["effect"]) =>
     effect === "always_allow" ? t("Allow") : effect === "deny" ? t("Block") : t("Ask");
 
-  const modes: { value: ApprovalMode; label: string }[] = [
-    { value: "never", label: t("Never ask") },
-    ...(settings?.checkerAvailable || settings?.mode === "auto"
-      ? [{ value: "auto" as const, label: t("Auto") }]
-      : []),
-    { value: "ask", label: t("Ask") },
-  ];
-
   const failure = error ?? loadError;
-  const shownError = error ?? (settings ? loadError : null);
+  const shownError = error ?? (rules ? loadError : null);
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
@@ -125,7 +113,7 @@ export default function Approvals() {
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {failure && !settings ? (
+        {failure && !rules ? (
           <LoadFailure
             message={failure}
             onRetry={() => {
@@ -139,20 +127,8 @@ export default function Approvals() {
             {shownError}
           </Text>
         ) : null}
-        <View style={styles.section}>
-          <NativeSegmentedControl
-            accessibilityLabel={t("Approvals")}
-            disabled={!settings || pending}
-            onChange={(mode) => void setMode(mode)}
-            options={modes}
-            value={settings?.mode}
-          />
-          {settings?.mode === "auto" && !settings.checkerAvailable ? (
-            <SettingsFooter>{t("Add a model in Settings to use this.")}</SettingsFooter>
-          ) : null}
-        </View>
         <SettingsGroup>
-          {rules.map((rule) => {
+          {rules?.map((rule) => {
             const title =
               rule.matchKind === "tool" ? humanizeToolName(rule.matchValue) : rule.matchValue;
             const switchable = rule.matchKind !== "category";
@@ -213,7 +189,6 @@ function createStyles() {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: native.groupedPage },
     content: { width: "100%", padding: 20, gap: 24, paddingBottom: 40 },
-    section: { gap: 7 },
     error: { color: tokens.destructive, fontSize: 14 },
   });
 }
