@@ -461,6 +461,7 @@ export function ThreadComposer({
             minHeight: 44,
             borderRadius: 22,
             flexDirection: "row",
+            flexWrap: steering ? "wrap" : "nowrap",
             alignItems: "flex-end",
             // Keeps text clear of the call/send pill even when it runs to the trailing edge (RTL).
             gap: 8,
@@ -472,6 +473,7 @@ export function ThreadComposer({
           <View
             style={{
               flex: 1,
+              minWidth: steering ? 96 : undefined,
               flexDirection: "row",
               flexWrap: "wrap",
               alignItems: "center",
@@ -674,7 +676,12 @@ export function ThreadComposer({
               disabled={sending || !canSend}
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               onPress={() => void send()}
-              style={{ marginBottom: 8, opacity: sending || !canSend ? 0.5 : 1 }}
+              style={{
+                marginBottom: 8,
+                marginStart: steering ? "auto" : undefined,
+                maxWidth: "100%",
+                opacity: sending || !canSend ? 0.5 : 1,
+              }}
             >
               <GlassSurface
                 tint={tokens.primary}
