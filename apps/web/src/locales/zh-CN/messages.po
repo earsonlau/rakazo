@@ -706,7 +706,7 @@ msgstr "已有账户？"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Always act"
-msgstr "一律回应"
+msgstr "始终处理"
 
 #: src/components/AskCard.tsx
 msgid "Always allow {site}"
@@ -920,11 +920,11 @@ msgstr "自动"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Automated senders"
-msgstr "自动账号"
+msgstr "自动发送者"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Automated senders will appear after they post here."
-msgstr "自动账号在这里发过消息后会出现。"
+msgstr "自动发送者在这里发过消息后会出现。"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Available after the routine is saved"
@@ -1047,7 +1047,7 @@ msgstr ""
 
 #: src/pages/Artifacts.tsx
 msgid "Bots"
-msgstr "Bot"
+msgstr "机器人"
 
 #: src/components/ModelCredits.tsx
 msgid "Bots and browser automation"
@@ -1059,7 +1059,7 @@ msgstr "每个 Bot 都有自己的电脑和浏览器"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Brain label"
-msgstr "Brain 名称"
+msgstr "Brain 标签"
 
 #: src/components/integrations/skills-dialog.tsx
 msgid "Browse"
@@ -1755,7 +1755,7 @@ msgstr "无法检查已存储的凭据。"
 
 #: src/components/teach/TeachComputerOverlay.tsx
 msgid "Could not check teaching status. Refresh the view to continue."
-msgstr "查不到教学状态。请刷新画面后再继续。"
+msgstr "无法查看教学状态。请刷新画面后继续。"
 
 #: src/pages/shell/dialogs.tsx
 msgid "Could not clear conversation"
@@ -1930,7 +1930,7 @@ msgstr "无法加载账单"
 
 #: src/pages/IntegrationSetup.tsx
 msgid "Could not load bots. Reload to try again."
-msgstr "加载不了 Bot。请重新加载后再试一次。"
+msgstr "无法加载 Bot。请重新加载后再试。"
 
 #: src/components/VaultSettings.tsx
 msgid "Could not load credentials."
@@ -2208,7 +2208,7 @@ msgstr "无法更新默认记忆范围"
 
 #: src/components/ComputersUnavailableHint.tsx
 msgid "Could not verify computer setup ({failureMessage}). Fix the connection, then check again."
-msgstr "无法确认电脑是否就绪（{failureMessage}）。请修好连接后再检查一次。"
+msgstr "无法确认电脑是否就绪（{failureMessage}）。请修复连接后再检查一次。"
 
 #: src/pages/MessagingSettingsPanel.tsx
 msgid "Couldn't load messaging settings"
@@ -2556,7 +2556,7 @@ msgstr "Docker"
 
 #: src/components/ComputersUnavailableHint.tsx
 msgid "Docker is configured but computers are not responding. Confirm the sandbox supervisor is running, then recreate the stack after changing .env."
-msgstr "Docker 已配置，但电脑没有响应。请确认 sandbox supervisor 正在运行；如果改过 .env，请重新创建这套服务。"
+msgstr "Docker 已配置，但电脑没有响应。请确认 sandbox supervisor 正在运行；更改 .env 后请重建环境。"
 
 #: src/pages/HostComputerPrompt.tsx
 msgid "Docker limits access to your computer for added security. Using {hostLabel} lets bots work with your local files and tools."
@@ -2673,7 +2673,7 @@ msgstr "将于 {day} 结束"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Engage when... Ignore..."
-msgstr "何时回复……何时忽略……"
+msgstr "在…时参与，忽略…"
 
 #: src/lib/user-error.ts
 msgid "Enter a password"
@@ -4876,7 +4876,7 @@ msgstr "撤销"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Room guidance"
-msgstr "群聊规则"
+msgstr "房间指引"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Rotate key"
@@ -5252,7 +5252,7 @@ msgstr "显示设置"
 
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Show tool activity"
-msgstr "显示工具调用"
+msgstr "显示工具活动"
 
 #: src/components/call/VoiceChatCard.tsx
 msgid "Show transcript"
@@ -6083,7 +6083,7 @@ msgstr "请使用“连接”验证密钥。"
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Use default guidance"
-msgstr "使用默认规则"
+msgstr "使用默认指引"
 
 #: src/pages/SpaceSettingOverrides.tsx
 msgid "Use defaults"
