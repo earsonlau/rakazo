@@ -3,6 +3,7 @@ name: Contribution preflight
 on:
   push:
     branches: [codex/approval-rule-reason-preflight]
+  workflow_dispatch:
 
 permissions:
   contents: read
