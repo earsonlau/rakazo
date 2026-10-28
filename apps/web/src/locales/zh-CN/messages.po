@@ -309,7 +309,7 @@ msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Access token"
-msgstr ""
+msgstr "访问令牌"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Access token (optional)"
@@ -330,11 +330,11 @@ msgstr "账户 ID"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Account label"
-msgstr ""
+msgstr "账户标签"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Accounts"
-msgstr ""
+msgstr "账户"
 
 #. placeholder {0}: bot.name
 #. placeholder {0}: group.spaceName
@@ -408,7 +408,7 @@ msgstr "请填写 HTTPS 服务器 URL。"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Add another"
-msgstr ""
+msgstr "再添加一个"
 
 #: src/pages/ModelBackupsSettings.tsx
 msgid "Add connected model"
@@ -420,7 +420,7 @@ msgstr "添加已连接模型作为备用模型。"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Add credential"
-msgstr ""
+msgstr "添加凭据"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Add Executor"
@@ -457,7 +457,7 @@ msgstr "添加服务器"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Add server URL"
-msgstr ""
+msgstr "添加服务器 URL"
 
 #: src/components/teach/SkillDraftCard.tsx
 msgid "Add to routine"
@@ -473,7 +473,7 @@ msgstr "添加触发器"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Added"
-msgstr ""
+msgstr "已添加"
 
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -705,7 +705,7 @@ msgstr "发送外部邮件前询问"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Ask the server owner to configure this provider."
-msgstr ""
+msgstr "请让服务器所有者配置此提供方。"
 
 #. placeholder {0}: preset.time
 #: src/pages/RoutineSchedule.tsx
@@ -803,11 +803,11 @@ msgstr "Base URL"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Basic auth"
-msgstr ""
+msgstr "基本认证"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Basic auth ({username})"
-msgstr ""
+msgstr "基本认证（{username}）"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -886,7 +886,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Browse MCP servers"
-msgstr ""
+msgstr "浏览 MCP 服务器"
 
 #: src/components/computer/ComputerWorkspace.tsx
 msgid "Browser"
@@ -1087,11 +1087,11 @@ msgstr "正在清空…"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Client ID"
-msgstr ""
+msgstr "客户端 ID"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Client secret"
-msgstr ""
+msgstr "客户端密钥"
 
 #: src/components/ErrorBoundary.tsx
 #: src/pages/KnowledgeSection.tsx
@@ -1255,7 +1255,7 @@ msgstr "电脑未开启。请设置 SANDBOX_PROVIDER=docker 并提供 SANDBOX_SU
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Configure a plugin catalog on the server to connect apps."
-msgstr ""
+msgstr "在服务器上配置插件目录以连接应用。"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Configured by deployment"
@@ -1594,7 +1594,7 @@ msgstr ""
 
 #: src/pages/IntegrationSetup.tsx
 msgid "Could not load bots. Reload to try again."
-msgstr ""
+msgstr "无法加载 Bot。请重新加载后重试。"
 
 #: src/components/computer/TerminalApp.tsx
 msgid "Could not load commands"
@@ -1602,7 +1602,7 @@ msgstr ""
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not load credentials."
-msgstr ""
+msgstr "无法加载凭据。"
 
 #: src/components/integrations/IntegrationSetup.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -1701,11 +1701,11 @@ msgstr "无法移除规则"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not remove the credential"
-msgstr ""
+msgstr "无法移除凭据"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not rename connection"
-msgstr ""
+msgstr "无法重命名连接"
 
 #: src/pages/shell/dialogs.tsx
 msgid "Could not rename section"
@@ -1780,7 +1780,7 @@ msgstr "无法保存该语音"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Could not save the credential"
-msgstr ""
+msgstr "无法保存凭据"
 
 #: src/pages/shell/message-cards.tsx
 msgid "Could not save this choice"
@@ -1788,7 +1788,7 @@ msgstr "无法保存此选择"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Could not search catalog"
-msgstr ""
+msgstr "无法搜索目录"
 
 #: src/pages/Auth.tsx
 msgid "Could not send reset email"
@@ -1926,7 +1926,7 @@ msgstr "凭据已保存"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Credentials"
-msgstr ""
+msgstr "凭据"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Credentials are encrypted and never sent to the model."
@@ -1947,7 +1947,7 @@ msgstr "当前密码"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Custom header"
-msgstr ""
+msgstr "自定义请求头"
 
 #: src/pages/shell/dialogs.tsx
 msgid "Customer support"
@@ -2100,7 +2100,7 @@ msgstr "详情"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Direct MCP"
-msgstr ""
+msgstr "直连 MCP"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Disabled tools"
@@ -2199,7 +2199,7 @@ msgstr "下载为 Markdown"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Download Executor"
-msgstr ""
+msgstr "下载 Executor"
 
 #: src/components/DesktopUpdates.tsx
 msgid "Downloading…"
@@ -2259,7 +2259,7 @@ msgstr "请输入密码"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Enter a username and password"
-msgstr ""
+msgstr "请输入用户名和密码"
 
 #: src/lib/user-error.ts
 msgid "Enter a valid email"
@@ -2498,7 +2498,7 @@ msgstr "通用"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Get credentials"
-msgstr ""
+msgstr "获取凭据"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Get notified when this Bot finishes or needs input"
@@ -2547,7 +2547,7 @@ msgstr "请求头"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Header \"{header}\""
-msgstr ""
+msgstr "请求头“{header}”"
 
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/PluginsOverlay.tsx
@@ -2686,11 +2686,11 @@ msgstr "指令已更新"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Integration domain"
-msgstr ""
+msgstr "集成域名"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Integration options"
-msgstr ""
+msgstr "集成选项"
 
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/Shell.tsx
@@ -2857,7 +2857,7 @@ msgstr "正在加载规则…"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Loading tools…"
-msgstr ""
+msgstr "正在加载工具…"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Loading voice providers…"
@@ -2905,7 +2905,7 @@ msgstr ""
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Lowercase letters, numbers, hyphens and underscores, starting with a letter."
-msgstr ""
+msgstr "以字母开头，仅包含小写字母、数字、连字符和下划线。"
 
 #: src/components/ComputerUpdateProgress.tsx
 msgid "Make sure nothing is still running on this computer."
@@ -2929,11 +2929,11 @@ msgstr "管理消息设置"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manual"
-msgstr ""
+msgstr "手动"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Manual setup required"
-msgstr ""
+msgstr "需要手动设置"
 
 #: src/pages/BotContextMenu.tsx
 msgid "Mark as Read"
@@ -3288,7 +3288,7 @@ msgstr "还没有关联聊天应用。"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "No credentials saved for this bot."
-msgstr ""
+msgstr "此 Bot 还没有保存的凭据。"
 
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "No group chats yet."
@@ -3340,7 +3340,7 @@ msgstr "未找到提供方。"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "No remote MCP servers found"
-msgstr ""
+msgstr "未找到远程 MCP 服务器"
 
 #: src/pages/PluginsOverlay.tsx
 #: src/pages/SpaceSearch.tsx
@@ -3369,7 +3369,7 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "No tools available."
-msgstr ""
+msgstr "没有可用的工具。"
 
 #: src/pages/RoutineEditor.tsx
 msgid "No trigger"
@@ -3687,7 +3687,7 @@ msgstr ""
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Project ID"
-msgstr ""
+msgstr "项目 ID"
 
 #: src/components/teach/TeachRecordingChrome.tsx
 msgid "Protected input"
@@ -3871,7 +3871,7 @@ msgstr "移除 {full}"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Remove {secretName}? This bot will no longer be able to use it."
-msgstr ""
+msgstr "移除 {secretName}？此 Bot 将无法再使用它。"
 
 #: src/pages/RoutineEditor.tsx
 msgid "Remove change trigger"
@@ -3944,7 +3944,7 @@ msgstr "替换密钥"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Replace value"
-msgstr ""
+msgstr "替换值"
 
 #: src/pages/Shell.tsx
 msgid "Reply"
@@ -4135,11 +4135,11 @@ msgstr "保存备用模型"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Save credential"
-msgstr ""
+msgstr "保存凭据"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Save new value"
-msgstr ""
+msgstr "保存新值"
 
 #: src/components/ComputerMaintenanceActions.tsx
 msgid "Save the workspace and install current software."
@@ -4213,11 +4213,11 @@ msgstr ""
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Search by domain"
-msgstr ""
+msgstr "按域名搜索"
 
 #: src/components/integrations/IntegrationSetup.tsx
 msgid "Search integrations.sh"
-msgstr ""
+msgstr "搜索 integrations.sh"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Search models"
@@ -4297,7 +4297,7 @@ msgstr ""
 #: src/pages/AccountSettingsOverlay.tsx
 #: src/pages/LocalSettings.tsx
 msgid "Server integrations"
-msgstr ""
+msgstr "服务器集成"
 
 #: src/pages/McpServersOverlay.tsx
 msgid "Server name"
@@ -4433,7 +4433,7 @@ msgstr "注册"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Site"
-msgstr ""
+msgstr "网站"
 
 #. placeholder {0}: skill.name
 #: src/pages/Shell.tsx
@@ -4694,7 +4694,7 @@ msgstr "所选记忆提供方在此构建中不可用。"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "These saved settings can't be read. Remove it and add it again."
-msgstr ""
+msgstr "无法读取这些已保存的设置。请移除后重新添加。"
 
 #: src/components/call/CallCard.tsx
 #: src/pages/ModelSettingsOverlay.tsx
@@ -4850,7 +4850,7 @@ msgstr "工具源"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Tools"
-msgstr ""
+msgstr "工具"
 
 #: src/components/composer/HoldToTalk.tsx
 msgid "Transcribing…"
@@ -4891,7 +4891,7 @@ msgstr "请重试测试。"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Type"
-msgstr ""
+msgstr "类型"
 
 #: src/components/teach/TeachRecordingChrome.tsx
 msgid "Type without recording"
@@ -4915,7 +4915,7 @@ msgstr "撤销"
 
 #: src/pages/PluginsOverlay.tsx
 msgid "Uninstall"
-msgstr ""
+msgstr "卸载"
 
 #: src/pages/shell/bot-panel.tsx
 msgid "Unknown tool"
@@ -4978,7 +4978,7 @@ msgstr "已更新"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Updated {updated}"
-msgstr ""
+msgstr "更新于 {updated}"
 
 #: src/pages/SettingsOverlay.tsx
 msgid "Updates"
@@ -5055,7 +5055,7 @@ msgstr "使用自己的密钥"
 #: src/components/AskCard.tsx
 #: src/pages/shell/bot-credentials.tsx
 msgid "Username"
-msgstr ""
+msgstr "用户名"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Uses this server's own {hostCredentialSource} credentials to access {selectedProviderName}."
@@ -5063,7 +5063,7 @@ msgstr "使用此服务器自己的 {hostCredentialSource} 凭据访问 {selecte
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Value"
-msgstr ""
+msgstr "值"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Values are encrypted and never shown again."
@@ -5117,7 +5117,7 @@ msgstr "Webhook"
 
 #: src/pages/shell/bot-credentials.tsx
 msgid "Website login"
-msgstr ""
+msgstr "网站登录"
 
 #: src/lib/billing.ts
 msgid "week"
