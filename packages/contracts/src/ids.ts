@@ -7,6 +7,7 @@ export const ActorSchema = z.object({
   userId: Id,
   spaceId: Id,
   email: z.string().email(),
+  /** Deprecated wire field. App accounts have no deployment role; always false. */
   isDeploymentOwner: z.boolean(),
 });
 export type Actor = z.infer<typeof ActorSchema>;
@@ -44,8 +45,9 @@ export const SandboxKind = z.enum([
   "e2b",
   "daytona",
   "createos",
-  "box",
+  "boat",
   "railway",
+  "kubernetes",
   "desktop",
   "fake",
 ]);

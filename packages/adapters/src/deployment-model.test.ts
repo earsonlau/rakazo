@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hostCredentialSource, resolveDeploymentModel } from "./deployment-model.js";
+import { resolveDeploymentModel } from "./deployment-model.js";
 
 // Host credentials come from the process, so blank the ones a developer machine or CI
 // host may carry; each case states its own.
@@ -30,7 +30,7 @@ describe("resolveDeploymentModel", () => {
       configured: true,
       hostCredentials: false,
     });
-    // The whole point: switching the provider switches the key with it.
+    // Switching the provider switches the key with it.
     expect(resolveDeploymentModel({ ...both, PI_DEFAULT_PROVIDER: "anthropic" })).toEqual({
       provider: "anthropic",
       model: "claude-sonnet-5",
@@ -98,12 +98,5 @@ describe("resolveDeploymentModel", () => {
         PI_DEFAULT_CREDENTIALS: "host",
       }).configured,
     ).toBe(false);
-  });
-});
-
-describe("hostCredentialSource", () => {
-  it("names the cloud identity a provider authenticates with from the host", () => {
-    expect(hostCredentialSource("amazon-bedrock")).toBe("AWS IAM");
-    expect(hostCredentialSource("google-vertex")).toBe("Google Cloud");
   });
 });

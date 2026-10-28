@@ -1,7 +1,8 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Bot, BotMcpServer, McpServer, McpTransport } from "@rakazo/contracts";
-import { deriveMcpSlug } from "@rakazo/core";
+import type { BotMcpServer, McpServer, McpTransport } from "@rakazo/contracts";
+import { deriveMcpSlug, isRetryableError } from "@rakazo/core";
+import { fetchFresh, writeSaved } from "@rakazo/core/query";
 import {
   Badge,
   Button,
@@ -15,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldTitle,
@@ -22,17 +24,53 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Textarea,
+  Toggle,
+  toast,
 } from "@rakazo/ui-web";
-import { Check, X } from "lucide-react";
-import { useEffect, useState } from "react";
-import { connectMcpOauth, MCP_OAUTH_CHANNEL } from "../lib/mcp-connect";
+import { Disclosure } from "@rakazo/ui-web/components/ui/disclosure";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, LoaderCircle, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AvailabilityControl,
+  reachesOtherSpaces,
+  useOwnSpaces,
+} from "../components/integrations/space-availability";
+import { McpServerHealthLine } from "../components/McpServerHealthLine";
+import { connectMcpOauth, MCP_OAUTH_CHANNEL, mcpOAuthRedirectUri } from "../lib/mcp-connect";
+import { useSpaceQueries } from "../lib/query";
 import { rpc } from "../lib/rpc";
 import { errorText } from "../lib/user-error";
+
+/** How often the list is re-read while a server installs its package or is being tested. */
+const INSTALL_POLL_MS = 2500;
+
+type EnvRow = { id: number; name: string; value: string; file: boolean };
+
+/** How an env value asks Rakazo to inject the granted OAuth access token. */
+const oauthEnvReference = "{{oauth.access_token}}";
+
+let nextEnvRowId = 0;
+const emptyEnvRow = (): EnvRow => ({
+  id: nextEnvRowId++,
+  name: "",
+  value: "",
+  file: false,
+});
+
+/** Environment variable names the server accepts: capitals, digits, and underscores. */
+function envName(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, "_")
+    .replace(/^(?=[0-9])/, "_");
+}
 
 function oauthStatusText(server: McpServer): string | null {
   if (server.oauthStatus === "connected") return t`OAuth connected`;
   if (server.oauthStatus === "reconnect") return t`OAuth expired`;
-  return server.hasSecret ? t`credential saved` : null;
+  return server.hasSecret ? t`Credential saved` : null;
 }
 
 function oauthActionLabel(server: McpServer, pending: boolean): string {
@@ -40,11 +78,19 @@ function oauthActionLabel(server: McpServer, pending: boolean): string {
   return server.oauthStatus === "none" ? t`Connect OAuth` : t`Reconnect OAuth`;
 }
 
-export function McpServersOverlay({ onClose }: { onClose: () => void }) {
+export function McpServersOverlay({
+  onClose,
+  editServerId,
+  stdioEnabled,
+}: {
+  onClose: () => void;
+  /** Opens with this server's form, as an import's setup checklist does. */
+  editServerId?: string;
+  /** Whether this deployment runs stdio servers. */
+  stdioEnabled: boolean;
+}) {
   const { t } = useLingui();
-  const [servers, setServers] = useState<McpServer[]>([]);
-  const [bots, setBots] = useState<Bot[]>([]);
-  const [botAssignments, setBotAssignments] = useState<Record<string, BotMcpServer[]>>({});
+  const [editing, setEditing] = useState<McpServer | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
   const [transport, setTransport] = useState<McpTransport>("streamable_http");
@@ -53,34 +99,72 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
   const [secret, setSecret] = useState("");
   const [headerName, setHeaderName] = useState("Authorization");
   const [headerValue, setHeaderValue] = useState("");
+  const [oauthClientId, setOauthClientId] = useState("");
+  const [oauthClientSecret, setOauthClientSecret] = useState("");
+  const [oauthAuthorizationServer, setOauthAuthorizationServer] = useState("");
+  const [oauthScope, setOauthScope] = useState("");
+  const [oauthParams, setOauthParams] = useState("");
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
+  const [envRows, setEnvRows] = useState<EnvRow[]>(() => [emptyEnvRow()]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [oauthPending, setOauthPending] = useState<string | null>(null);
+  const [testingIds, setTestingIds] = useState<Set<string>>(() => new Set());
+  const queries = useSpaceQueries();
+  const queryClient = useQueryClient();
+  const serversOptions = queries.mcp.servers.list.queryOptions();
+  const serversQuery = useQuery({
+    ...serversOptions,
+    // A freshly saved stdio server installs its package in the background, so its health
+    // moves installing -> ok/error on its own, and a test can spend minutes installing.
+    // Re-read the list while either is true so the card follows along; a refused request
+    // stops it.
+    refetchInterval: (query) => {
+      const error = query.state.error;
+      if (error && !isRetryableError(error)) return false;
+      const installing = query.state.data?.some((server) => server.health.status === "installing");
+      return testingIds.size > 0 || installing ? INSTALL_POLL_MS : false;
+    },
+  });
+  const botsOptions = queries.bots.list.queryOptions();
+  const botsQuery = useQuery(botsOptions);
+  const assignmentsOptions = queries.mcp.assignments.all.queryOptions();
+  const assignmentsQuery = useQuery(assignmentsOptions);
+  const servers = serversQuery.data ?? [];
+  const spaceCount = useOwnSpaces().length;
+  const bots = useMemo(
+    () => (botsQuery.data ?? []).filter((bot) => !bot.archivedAt),
+    [botsQuery.data],
+  );
+  const botAssignments = useMemo(() => {
+    const assignments = assignmentsQuery.data ?? [];
+    return Object.fromEntries(
+      bots.map((bot) => [bot.id, assignments.filter((assignment) => assignment.botId === bot.id)]),
+    ) as Record<string, BotMcpServer[]>;
+  }, [bots, assignmentsQuery.data]);
+  // replace() overwrites a bot's whole list, so changes wait for a read of every assignment.
+  const assignmentsReady = assignmentsQuery.isSuccess && !assignmentsQuery.isFetching;
+  const loadFailed = serversQuery.isError || botsQuery.isError || assignmentsQuery.isError;
+  const shownError = error ?? (loadFailed ? t`Could not load MCP servers` : null);
 
+  /** Reads everything again with requests sent after a change. */
   async function refresh() {
-    const [nextServers, nextBots, assignments] = await Promise.all([
-      rpc.mcp.servers.list(),
-      rpc.bots.list(),
-      rpc.mcp.assignments.all(),
+    await Promise.all([
+      fetchFresh(queryClient, serversOptions),
+      fetchFresh(queryClient, botsOptions),
+      fetchFresh(queryClient, assignmentsOptions),
     ]);
-    const activeBots = nextBots.filter((bot) => !bot.archivedAt);
-    setServers(nextServers);
-    setBots(activeBots);
-    setBotAssignments(
-      Object.fromEntries(
-        activeBots.map((bot) => [
-          bot.id,
-          assignments.filter((assignment) => assignment.botId === bot.id),
-        ]),
-      ),
-    );
   }
 
+  const openedEditServer = useRef(false);
   useEffect(() => {
-    void refresh().catch((err: unknown) => setError(errorText(err, t`Could not load MCP servers`)));
-  }, []);
+    if (!editServerId || openedEditServer.current) return;
+    const server = servers.find((item) => item.id === editServerId);
+    if (!server) return;
+    openedEditServer.current = true;
+    startEditing(server);
+  }, [editServerId, servers]);
 
   useEffect(() => {
     // BroadcastChannel instead of window.opener messaging: provider login
@@ -93,7 +177,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
       void refresh().catch(() => undefined);
     };
     return () => channel.close();
-  }, []);
+  }, [queries]);
 
   function toggleBot(id: string) {
     setSelectedBotIds((current) =>
@@ -101,7 +185,59 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
     );
   }
 
-  async function addServer() {
+  const duplicateNames = new Set(
+    envRows
+      .filter(
+        (row, index) =>
+          row.name &&
+          envRows.some(
+            (other, otherIndex) =>
+              otherIndex !== index && envName(other.name) === envName(row.name),
+          ),
+      )
+      .map((row) => row.name),
+  );
+
+  function resetForm() {
+    setEditing(null);
+    if (!stdioEnabled) setTransport("streamable_http");
+    setName("");
+    setEndpoint("");
+    setSecret("");
+    setHeaderName("Authorization");
+    setHeaderValue("");
+    setOauthClientId("");
+    setOauthClientSecret("");
+    setOauthAuthorizationServer("");
+    setOauthScope("");
+    setOauthParams("");
+    setCommand("");
+    setArgs("");
+    setEnvRows([emptyEnvRow()]);
+    setSelectedBotIds([]);
+  }
+
+  /** Stored values are never sent back to the client, so a blank one keeps what is stored. */
+  function startEditing(server: McpServer) {
+    resetForm();
+    setError(null);
+    setEditing(server);
+    setName(server.name);
+    setTransport(server.transport);
+    setEndpoint(server.endpoint ?? "");
+    setCommand(server.command ?? "");
+    setArgs(server.args.join(" "));
+    setHeaderName(server.headerKeys[0] ?? "Authorization");
+    const rows = [
+      ...server.envKeys.map((name) => ({ ...emptyEnvRow(), name })),
+      ...server.fileKeys.map((name) => ({ ...emptyEnvRow(), name, file: true })),
+    ];
+    if (rows.length > 0) setEnvRows(rows);
+  }
+
+  async function saveServer() {
+    if (transport === "stdio" && duplicateNames.size > 0) return;
+    if (!editing && selectedBotIds.length > 0 && !assignmentsReady) return;
     setError(null);
     if (!name.trim()) {
       setError(t`Add a server name.`);
@@ -118,30 +254,74 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
     setSaving(true);
     try {
       const slug = deriveMcpSlug(name);
-      const headers = headerValue.trim()
-        ? { [headerName.trim() || "Authorization"]: headerValue.trim() }
-        : {};
-      const created =
+      const headers = {
+        ...Object.fromEntries((editing?.headerKeys ?? []).map((key) => [key, ""])),
+        ...(headerValue.trim()
+          ? { [headerName.trim() || "Authorization"]: headerValue.trim() }
+          : {}),
+      };
+      const oauthBase = oauthClientId.trim()
+        ? {
+            clientId: oauthClientId.trim(),
+            clientSecret: oauthClientSecret || undefined,
+            scope: oauthScope.trim() || undefined,
+            authorizationParams: oauthParams.trim() || undefined,
+          }
+        : undefined;
+      const envEntries = (file: boolean) =>
+        Object.fromEntries(
+          envRows
+            .filter((row) => row.name && row.file === file)
+            .map((row) => [row.name, row.value]),
+        );
+      const config =
         transport === "stdio"
-          ? await rpc.mcp.servers.create({
+          ? {
               slug,
               name: name.trim(),
               transport,
               command: command.trim(),
-              args: args.split(/\s+/).filter(Boolean),
-              env: {},
+              // Untouched arguments keep their boundaries, spaces included.
+              args:
+                editing && args === editing.args.join(" ")
+                  ? editing.args
+                  : args.split(/\s+/).filter(Boolean),
+              env: envEntries(false),
+              files: envEntries(true),
               secret: secret || undefined,
+              oauthClient: oauthBase
+                ? {
+                    ...oauthBase,
+                    authorizationServer: oauthAuthorizationServer.trim(),
+                  }
+                : undefined,
               enabled: true,
-            })
-          : await rpc.mcp.servers.create({
+            }
+          : {
               slug,
               name: name.trim(),
               transport,
               endpoint: endpoint.trim(),
               headers,
               secret: secret || undefined,
+              oauthClient: oauthBase,
               enabled: true,
-            });
+            };
+      if (editing) {
+        await rpc.mcp.servers.update({
+          id: editing.id,
+          config: {
+            ...config,
+            slug: editing.slug,
+            description: editing.description,
+            enabled: editing.enabled,
+          },
+        });
+        await refresh();
+        resetForm();
+        return;
+      }
+      const created = await rpc.mcp.servers.create(config);
       // replace() overwrites the bot's whole list, so merge with what it already has.
       await Promise.all(
         selectedBotIds.map((botId) => {
@@ -158,18 +338,16 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
         }),
       );
       await refresh();
-      setName("");
-      setEndpoint("");
-      setSecret("");
-      setHeaderValue("");
-      setCommand("");
-      setArgs("");
-      setSelectedBotIds([]);
+      resetForm();
     } catch (err) {
-      setError(errorText(err, t`Could not add MCP server`));
+      setError(errorText(err, editing ? t`Could not save` : t`Could not add MCP server`));
     } finally {
       setSaving(false);
     }
+  }
+
+  function updateEnvRow(id: number, patch: Partial<EnvRow>) {
+    setEnvRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
   async function connectOAuth(server: McpServer) {
@@ -196,6 +374,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
   }
 
   async function toggleAssignment(server: McpServer, botId: string) {
+    if (!assignmentsReady) return;
     setError(null);
     const current = botAssignments[botId] ?? [];
     const assigned = current.some((entry) => entry.serverId === server.id);
@@ -203,8 +382,14 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
       ? current.filter((entry) => entry.serverId !== server.id)
       : [...current, { serverId: server.id, allowAllTools: true, allowedTools: [] }];
     try {
-      const updated = await rpc.mcp.assignments.replace({ botId, assignments: next });
-      setBotAssignments((map) => ({ ...map, [botId]: updated }));
+      const updated = await rpc.mcp.assignments.replace({
+        botId,
+        assignments: next,
+      });
+      await writeSaved(queryClient, assignmentsOptions.queryKey, (all) => [
+        ...(all ?? []).filter((entry) => entry.botId !== botId),
+        ...updated,
+      ]);
     } catch (err) {
       setError(errorText(err, t`Could not update agent access`));
     }
@@ -219,9 +404,34 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       await rpc.mcp.servers.remove({ id: server.id });
+      if (editing?.id === server.id) resetForm();
       await refresh();
     } catch (err) {
       setError(errorText(err, t`Could not delete MCP server`));
+    }
+  }
+
+  async function testServer(server: McpServer) {
+    setError(null);
+    setTestingIds((current) => new Set(current).add(server.id));
+    try {
+      const updated = await rpc.mcp.servers.test({ id: server.id });
+      await writeSaved(queryClient, serversOptions.queryKey, (current) =>
+        (current ?? []).map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (updated.health.status === "ok") {
+        toast.success(t`${updated.name} is running`);
+      } else if (updated.health.status === "error") {
+        toast.error(t`${updated.name} is not working`);
+      }
+    } catch (err) {
+      setError(errorText(err, t`Could not test MCP server`));
+    } finally {
+      setTestingIds((current) => {
+        const next = new Set(current);
+        next.delete(server.id);
+        return next;
+      });
     }
   }
 
@@ -250,7 +460,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
         className="flex max-h-[calc(100%-2rem)] w-[960px] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-2xl bg-card p-0 sm:max-w-[960px]"
       >
         <DialogHeader className="flex-row items-center justify-between border-b border-border px-6 py-5">
-          <DialogTitle className="text-xl text-foreground">
+          <DialogTitle className="text-heading2 text-foreground">
             <Trans>MCP servers</Trans>
           </DialogTitle>
           <DialogClose
@@ -259,20 +469,18 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
             <X />
           </DialogClose>
         </DialogHeader>
-        {error ? (
+        {shownError ? (
           <p
             role="alert"
             className="mx-6 mt-5 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
           >
-            {error}
+            {shownError}
           </p>
         ) : null}
         <div className="rk-scroll grid min-h-0 grid-cols-1 gap-5 overflow-y-auto p-6 lg:grid-cols-2">
           <Card className="self-start">
             <CardHeader>
-              <CardTitle>
-                <Trans>Add server</Trans>
-              </CardTitle>
+              <CardTitle>{editing ? editing.name : <Trans>Add server</Trans>}</CardTitle>
             </CardHeader>
             <CardContent>
               <FieldGroup className="gap-4">
@@ -294,7 +502,9 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   <TabsList className="w-full">
                     <TabsTrigger value="streamable_http">HTTP</TabsTrigger>
                     <TabsTrigger value="sse">SSE</TabsTrigger>
-                    <TabsTrigger value="stdio">STDIO</TabsTrigger>
+                    {stdioEnabled || editing?.transport === "stdio" ? (
+                      <TabsTrigger value="stdio">STDIO</TabsTrigger>
+                    ) : null}
                   </TabsList>
                 </Tabs>
                 {transport === "stdio" ? (
@@ -329,24 +539,19 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                     </FieldLabel>
                     <Input
                       id="mcp-endpoint"
+                      type="url"
+                      autoComplete="off"
                       value={endpoint}
                       onChange={(e) => setEndpoint(e.target.value)}
                       placeholder="https://api.mobbin.com/mcp"
                     />
                   </Field>
                 )}
-                <details className="group rounded-xl border border-border">
-                  <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-sm text-foreground">
-                    <span>
-                      <Trans>Advanced</Trans>
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="text-muted-foreground transition-transform group-open:rotate-90"
-                    >
-                      ›
-                    </span>
-                  </summary>
+                <Disclosure
+                  className="group rounded-xl border border-border"
+                  summary={<Trans>Advanced</Trans>}
+                  summaryClassName="w-full flex items-center justify-between px-3 py-2.5 text-sm text-foreground"
+                >
                   <div className="space-y-4 border-t border-border p-3">
                     <Field>
                       <FieldLabel htmlFor="mcp-secret">
@@ -355,12 +560,116 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                       <Input
                         id="mcp-secret"
                         type="password"
+                        autoComplete="new-password"
                         value={secret}
                         onChange={(e) => setSecret(e.target.value)}
                         placeholder={t`Stored encrypted`}
                       />
                     </Field>
-                    {transport !== "stdio" ? (
+                    {transport === "stdio" ? (
+                      <Field>
+                        <FieldTitle>
+                          <Trans>Environment variables</Trans>
+                        </FieldTitle>
+                        {envRows.map((row) => (
+                          <Field
+                            key={row.id}
+                            orientation="horizontal"
+                            data-invalid={duplicateNames.has(row.name) || undefined}
+                            className="grid grid-cols-[.7fr_1fr_auto_auto] items-start gap-2"
+                          >
+                            <Input
+                              aria-label={t`Name`}
+                              aria-invalid={duplicateNames.has(row.name) || undefined}
+                              aria-describedby={
+                                duplicateNames.has(row.name) ? `mcp-env-error-${row.id}` : undefined
+                              }
+                              autoComplete="off"
+                              className={row.file ? "col-span-2" : undefined}
+                              value={row.name}
+                              onChange={(e) =>
+                                updateEnvRow(row.id, {
+                                  name: envName(e.target.value),
+                                })
+                              }
+                              placeholder="API_KEY"
+                            />
+                            {row.file ? null : (
+                              <Input
+                                aria-label={t`Value`}
+                                type={row.value.includes("{{oauth.") ? "text" : "password"}
+                                autoComplete={
+                                  row.value.includes("{{oauth.") ? "off" : "new-password"
+                                }
+                                value={row.value}
+                                onChange={(e) =>
+                                  updateEnvRow(row.id, {
+                                    value: e.target.value,
+                                  })
+                                }
+                                placeholder={t`Stored encrypted`}
+                              />
+                            )}
+                            <Toggle
+                              variant="outline"
+                              size="sm"
+                              pressed={row.file}
+                              onPressedChange={(file) => updateEnvRow(row.id, { file })}
+                            >
+                              <Trans>File</Trans>
+                            </Toggle>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t`Remove`}
+                              onClick={() =>
+                                setEnvRows((rows) =>
+                                  rows.length > 1
+                                    ? rows.filter((item) => item.id !== row.id)
+                                    : [emptyEnvRow()],
+                                )
+                              }
+                            >
+                              <X />
+                            </Button>
+                            {row.file ? (
+                              <Textarea
+                                aria-label={t`Value`}
+                                autoComplete="off"
+                                spellCheck={false}
+                                className="col-span-full min-h-24 font-mono text-xs"
+                                value={row.value}
+                                onChange={(e) =>
+                                  updateEnvRow(row.id, {
+                                    value: e.target.value,
+                                  })
+                                }
+                              />
+                            ) : null}
+                            {duplicateNames.has(row.name) ? (
+                              <FieldError id={`mcp-env-error-${row.id}`} className="col-span-full">
+                                <Trans>Each name can be used once.</Trans>
+                              </FieldError>
+                            ) : null}
+                          </Field>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          className="self-start"
+                          onClick={() => setEnvRows((rows) => [...rows, emptyEnvRow()])}
+                        >
+                          <Trans>Add</Trans>
+                        </Button>
+                        {oauthClientId.trim() ? (
+                          <p className="text-xs text-muted-foreground">
+                            <Trans>Use {oauthEnvReference} for the access token.</Trans>
+                          </p>
+                        ) : null}
+                      </Field>
+                    ) : (
                       <div className="grid grid-cols-[.7fr_1fr] gap-2">
                         <Input
                           aria-label={t`Header name`}
@@ -370,15 +679,94 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                         <Input
                           aria-label={t`Header value`}
                           type="password"
+                          autoComplete="new-password"
                           value={headerValue}
                           onChange={(e) => setHeaderValue(e.target.value)}
                           placeholder={t`Optional header value`}
                         />
                       </div>
+                    )}
+                    <Field>
+                      <FieldLabel htmlFor="mcp-oauth-client-id">
+                        <Trans>OAuth client ID (optional)</Trans>
+                      </FieldLabel>
+                      <Input
+                        id="mcp-oauth-client-id"
+                        autoComplete="off"
+                        value={oauthClientId}
+                        onChange={(e) => setOauthClientId(e.target.value)}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="mcp-oauth-client-secret">
+                        <Trans>OAuth client secret (optional)</Trans>
+                      </FieldLabel>
+                      <Input
+                        id="mcp-oauth-client-secret"
+                        type="password"
+                        autoComplete="new-password"
+                        value={oauthClientSecret}
+                        onChange={(e) => setOauthClientSecret(e.target.value)}
+                        placeholder={t`Stored encrypted`}
+                      />
+                    </Field>
+                    {oauthClientId.trim() ? (
+                      <>
+                        {transport === "stdio" ? (
+                          <Field>
+                            <FieldLabel htmlFor="mcp-oauth-authorization-server">
+                              <Trans>Authorization server</Trans>
+                            </FieldLabel>
+                            <Input
+                              id="mcp-oauth-authorization-server"
+                              type="url"
+                              autoComplete="off"
+                              value={oauthAuthorizationServer}
+                              onChange={(e) => setOauthAuthorizationServer(e.target.value)}
+                              placeholder="https://accounts.google.com"
+                            />
+                          </Field>
+                        ) : null}
+                        <Field>
+                          <FieldLabel htmlFor="mcp-oauth-scope">
+                            <Trans>Scopes (optional)</Trans>
+                          </FieldLabel>
+                          <Input
+                            id="mcp-oauth-scope"
+                            autoComplete="off"
+                            value={oauthScope}
+                            onChange={(e) => setOauthScope(e.target.value)}
+                            placeholder="openid email"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-oauth-params">
+                            <Trans>Authorization parameters (optional)</Trans>
+                          </FieldLabel>
+                          <Input
+                            id="mcp-oauth-params"
+                            autoComplete="off"
+                            value={oauthParams}
+                            onChange={(e) => setOauthParams(e.target.value)}
+                            placeholder="access_type=offline&prompt=consent"
+                          />
+                        </Field>
+                        <Field>
+                          <FieldLabel htmlFor="mcp-oauth-redirect-uri">
+                            <Trans>Redirect URI</Trans>
+                          </FieldLabel>
+                          <Input
+                            id="mcp-oauth-redirect-uri"
+                            readOnly
+                            value={mcpOAuthRedirectUri()}
+                            onFocus={(e) => e.target.select()}
+                          />
+                        </Field>
+                      </>
                     ) : null}
                   </div>
-                </details>
-                {bots.length > 0 ? (
+                </Disclosure>
+                {bots.length > 0 && !editing ? (
                   <Field>
                     <FieldTitle>
                       <Trans>Agents:</Trans>
@@ -392,8 +780,8 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                             type="button"
                             variant={selected ? "default" : "outline"}
                             size="xs"
-                            className="rounded-full"
                             aria-pressed={selected}
+                            disabled={!assignmentsReady}
                             onClick={() => toggleBot(bot.id)}
                           >
                             {selected ? <Check aria-hidden="true" /> : null}
@@ -408,11 +796,36 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
               <Button
                 type="button"
                 className="mt-5 w-full"
-                disabled={saving}
-                onClick={() => void addServer()}
+                disabled={
+                  saving ||
+                  (transport === "stdio" && duplicateNames.size > 0) ||
+                  (!editing && selectedBotIds.length > 0 && !assignmentsReady)
+                }
+                onClick={() => void saveServer()}
               >
-                {saving ? <Trans>Adding…</Trans> : <Trans>Add server</Trans>}
+                {editing ? (
+                  saving ? (
+                    <Trans>Saving…</Trans>
+                  ) : (
+                    <Trans>Save</Trans>
+                  )
+                ) : saving ? (
+                  <Trans>Adding…</Trans>
+                ) : (
+                  <Trans>Add server</Trans>
+                )}
               </Button>
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-2 w-full"
+                  disabled={saving}
+                  onClick={resetForm}
+                >
+                  <Trans>Cancel</Trans>
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
           <div>
@@ -439,9 +852,13 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                         <p className="mt-1 text-xs text-muted-foreground">
                           {server.endpoint ?? server.command ?? server.slug}
                         </p>
+                        <McpServerHealthLine
+                          health={server.health}
+                          checking={testingIds.has(server.id)}
+                        />
                         {statusText ? (
                           <p
-                            className={`mt-2 text-[11px] ${server.oauthStatus === "reconnect" ? "text-warning" : "text-muted-foreground"}`}
+                            className={`mt-1.5 text-[11px] ${server.oauthStatus === "reconnect" ? "text-warning" : "text-muted-foreground"}`}
                           >
                             {statusText}
                           </p>
@@ -460,8 +877,8 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                                 type="button"
                                 variant={assigned ? "default" : "outline"}
                                 size="xs"
-                                className="rounded-full"
                                 aria-pressed={assigned}
+                                disabled={!assignmentsReady}
                                 onClick={() => void toggleAssignment(server, bot.id)}
                               >
                                 {assigned ? <Check aria-hidden="true" /> : null}
@@ -470,8 +887,18 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                             );
                           })}
                         </div>
+                        {server.installId ? null : (
+                          <div className="mt-3">
+                            <AvailabilityControl
+                              kind="mcpServer"
+                              id={server.id}
+                              availability={server.availability}
+                              onChanged={() => serversQuery.refetch()}
+                            />
+                          </div>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {server.transport !== "stdio" ? (
+                          {server.transport !== "stdio" || server.oauthClientId ? (
                             <>
                               <Button
                                 type="button"
@@ -496,13 +923,43 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                           ) : null}
                           <Button
                             type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditing(server)}
+                          >
+                            <Trans>Edit</Trans>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                              testingIds.has(server.id) || server.health.status === "installing"
+                            }
+                            onClick={() => void testServer(server)}
+                          >
+                            {testingIds.has(server.id) ? (
+                              <>
+                                <LoaderCircle aria-hidden="true" className="animate-spin" />
+                                <Trans>Testing…</Trans>
+                              </>
+                            ) : (
+                              <Trans>Test connection</Trans>
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
                             variant={confirmingDelete === server.id ? "destructive" : "outline"}
                             size="sm"
-                            className="ml-auto"
+                            className="ms-auto"
                             onClick={() => void deleteServer(server)}
                           >
                             {confirmingDelete === server.id ? (
-                              <Trans>Confirm delete</Trans>
+                              reachesOtherSpaces(server.availability, spaceCount) ? (
+                                <Trans>Remove from every space?</Trans>
+                              ) : (
+                                <Trans>Confirm delete</Trans>
+                              )
                             ) : (
                               <Trans>Delete</Trans>
                             )}

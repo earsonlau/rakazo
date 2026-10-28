@@ -1,3 +1,4 @@
+import { MAX_PASSWORD_LENGTH, PASSWORD_RULES } from "@rakazo/core";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -14,9 +15,11 @@ import { changePassword } from "../../lib/api";
 import { mobileTokens } from "../../lib/appearance";
 import { useI18n } from "../../lib/i18n";
 import { native, useThemedStyles } from "../../lib/native";
+import { useSideInsets } from "../../lib/side-insets";
 import { errorText } from "../../lib/user-error";
 
 export default function ChangePassword() {
+  const sideInsets = useSideInsets();
   const router = useRouter();
   const { t } = useI18n();
   const styles = useThemedStyles(createStyles);
@@ -33,7 +36,7 @@ export default function ChangePassword() {
     };
   }, []);
   const [error, setError] = useState<string | null>(null);
-  const ready = !!currentPassword && newPassword.length >= 8 && !!confirmation;
+  const ready = !!currentPassword && !!newPassword && !!confirmation;
 
   function close() {
     if (router.canGoBack()) router.back();
@@ -71,6 +74,7 @@ export default function ChangePassword() {
         style={styles.screen}
       >
         <ScrollView
+          style={sideInsets}
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
@@ -100,6 +104,9 @@ export default function ChangePassword() {
               accessibilityLabel={field.label}
               autoCapitalize="none"
               autoComplete={field.current ? "current-password" : "new-password"}
+              textContentType={field.current ? "password" : "newPassword"}
+              passwordRules={field.current ? undefined : PASSWORD_RULES}
+              maxLength={MAX_PASSWORD_LENGTH}
               autoCorrect={false}
               editable={!pending}
               onChangeText={field.onChange}

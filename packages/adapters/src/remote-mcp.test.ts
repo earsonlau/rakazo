@@ -75,6 +75,27 @@ describe("remote MCP URL policy", () => {
     },
   );
 
+  it.each([
+    "http://[::ffff:a9fe:aa02]/credentials",
+    "https://[::ffff:169.254.170.2]/credentials",
+    "http://[::ffff:a9fe:1234]/mcp",
+    "https://[fe80::1234]/mcp",
+  ])("blocks link-local literals with private endpoints enabled: %s", async (endpoint) => {
+    const resolve = vi.fn(publicResolver);
+    const fetch = vi.fn();
+    const safeFetch = createSafeRemoteFetch(fetch, resolve, { allowPrivateEndpoint: true });
+    try {
+      await expect(
+        assertSafeRemoteUrl(endpoint, resolve, { allowPrivateEndpoint: true }),
+      ).rejects.toThrow(/private/);
+      await expect(safeFetch(endpoint)).rejects.toThrow(/private/);
+      expect(resolve).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      await safeFetch.close();
+    }
+  });
+
   it("rejects a private-suffix hostname that resolves to link-local metadata", async () => {
     await expect(
       assertSafeRemoteUrl(
@@ -162,35 +183,42 @@ describe("remote MCP URL policy", () => {
     ).rejects.toThrow("private address");
   });
 
-  it("allows Tailscale MagicDNS hosts that resolve to CGNAT addresses", async () => {
+  it("rejects MagicDNS hosts for users without the private-endpoint escape", async () => {
     const magicDns = "https://box.tail12345.ts.net/openapi.json";
     await expect(
       assertSafeRemoteUrl(magicDns, async () => [{ address: "100.64.1.2", family: 4 as const }]),
-    ).resolves.toEqual(new URL(magicDns));
+    ).rejects.toThrow("private address");
+    await expect(
+      assertSafeRemoteUrl(
+        magicDns,
+        async () => [{ address: "fd7a:115c:a1e0:ab12:4843:cd96:6265:6667", family: 6 as const }],
+        { allowPrivateEndpoint: false },
+      ),
+    ).rejects.toThrow("private address");
 
     const safeLookup = createSafeLookup(async () => [{ address: "100.119.57.55", family: 4 }]);
-    const result = await new Promise<{ address: string; family?: number }>((resolve, reject) => {
-      safeLookup("box.tail12345.ts.net", { family: 0, all: false }, (error, address, family) => {
-        if (error) reject(error);
-        else resolve({ address: String(address), family });
+    const error = await new Promise<Error | null>((resolve) => {
+      safeLookup("box.tail12345.ts.net", { family: 0, all: false }, (lookupError) => {
+        resolve(lookupError);
       });
     });
-    expect(result).toEqual({ address: "100.119.57.55", family: 4 });
+    expect(error).toMatchObject({ message: "Connector URL resolves to a private address" });
   });
 
-  it("allows the IPv6 half of a MagicDNS answer", async () => {
+  it("allows both halves of a MagicDNS answer with the private-endpoint escape", async () => {
     // MagicDNS answers with the node's fd7a:115c:a1e0::/48 ULA alongside its
     // CGNAT address, so rejecting the ULA rejects every tailnet host.
     const magicDns = "https://box.tail12345.ts.net/mcp";
+    const policy = { allowPrivateEndpoint: true };
     const addresses = [
       { address: "fd7a:115c:a1e0:ab12:4843:cd96:6265:6667", family: 6 as const },
       { address: "100.64.1.2", family: 4 as const },
     ];
-    await expect(assertSafeRemoteUrl(magicDns, async () => addresses)).resolves.toEqual(
+    await expect(assertSafeRemoteUrl(magicDns, async () => addresses, policy)).resolves.toEqual(
       new URL(magicDns),
     );
 
-    const safeLookup = createSafeLookup(async () => addresses);
+    const safeLookup = createSafeLookup(async () => addresses, policy);
     const resolved = await new Promise<unknown>((resolve, reject) => {
       safeLookup("box.tail12345.ts.net", { family: 0, all: true }, (error, entries) => {
         if (error) reject(error);
@@ -352,11 +380,8 @@ describe("remote MCP URL policy", () => {
   });
 
   it("drives the guarded dispatcher with a fetch from the same undici", async () => {
-    // A fetch from a different undici than the Agent fails at dispatch with
-    // "invalid onRequestStart method" before the lookup runs. Failing inside
-    // the lookup proves the request reached the guarded Agent. Node's fetch
-    // is a different major, so omit, builtin, and a captured builtin must
-    // all use the package fetch that matches the Agent.
+    // A fetch from a different undici than the Agent fails at dispatch before the lookup runs,
+    // so failing inside the lookup proves the request reached the guarded Agent.
     expect(undiciFetch).not.toBe(globalThis.fetch);
 
     const capturedNodeFetch = globalThis.fetch;
@@ -583,16 +608,17 @@ describe("createPrivateNetworkFetch", () => {
     expect(String(baseFetch.mock.calls[0]?.[0])).toBe("http://192.168.2.10:8080/v1/items");
   });
 
-  it("rejects an opted-in host that resolves to a mapped link-local address", async () => {
-    const baseFetch = mockFetch();
-    const fetch = createPrivateNetworkFetch(baseFetch, async () => [
-      { address: "::ffff:169.254.170.2", family: 6 as const },
-    ]);
-    await expect(fetch("http://nas.local:8080/v1/items", { method: "GET" })).rejects.toThrow(
-      "non-private address",
-    );
-    expect(baseFetch).not.toHaveBeenCalled();
-  });
+  it.each(["::ffff:169.254.170.2", "::ffff:a9fe:a9fe", "::ffff:a9fe:101"])(
+    "rejects an opted-in host that resolves to the mapped link-local address %s",
+    async (address) => {
+      const baseFetch = mockFetch();
+      const fetch = createPrivateNetworkFetch(baseFetch, async () => [{ address, family: 6 }]);
+      await expect(fetch("http://nas.local:8080/v1/items", { method: "GET" })).rejects.toThrow(
+        "non-private address",
+      );
+      expect(baseFetch).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects an opted-in host that resolves to a public address", async () => {
     const baseFetch = mockFetch();

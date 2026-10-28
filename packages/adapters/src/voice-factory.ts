@@ -2,6 +2,7 @@ import type { VoiceProvider } from "@rakazo/adapter-kit";
 import { CartesiaVoiceProvider } from "./cartesia-voice.js";
 import { ElevenLabsVoiceProvider } from "./elevenlabs-voice.js";
 import { FishAudioVoiceProvider } from "./fish-audio-voice.js";
+import { openAiCompatAllowPublicHosts } from "./openai-compatible-url.js";
 import {
   OPENAI_COMPATIBLE_VOICE_PROVIDER_ID,
   OpenAiCompatibleVoiceProvider,
@@ -51,10 +52,14 @@ export function scriptedVoiceEnabled() {
   return process.env.AGENT_RUNTIME === "scripted";
 }
 
-export function listVoiceCatalog() {
-  return scriptedVoiceEnabled()
-    ? [...VOICE_CATALOG, SCRIPTED_VOICE_CATALOG_ENTRY]
-    : [...VOICE_CATALOG];
+export function listVoiceCatalog(options: { allowPrivateEndpoint?: boolean } = {}) {
+  const catalog = VOICE_CATALOG.filter(
+    (entry) =>
+      entry.id !== OPENAI_COMPATIBLE_VOICE_PROVIDER_ID ||
+      options.allowPrivateEndpoint === true ||
+      openAiCompatAllowPublicHosts(),
+  );
+  return scriptedVoiceEnabled() ? [...catalog, SCRIPTED_VOICE_CATALOG_ENTRY] : catalog;
 }
 
 export function voiceCatalogEntry(id: string) {
@@ -67,8 +72,10 @@ export function isVoiceProviderId(value: string): value is VoiceProviderId {
   return VOICE_CATALOG.some((entry) => entry.id === value);
 }
 
-/** Construct the provider adapter selected by a persisted voice credential. */
-export function createVoiceProvider(kind: string): VoiceProvider {
+export function createVoiceProvider(
+  kind: string,
+  options: { allowPrivateEndpoint?: boolean } = {},
+): VoiceProvider {
   switch (kind) {
     case "elevenlabs":
       return new ElevenLabsVoiceProvider();
@@ -79,7 +86,9 @@ export function createVoiceProvider(kind: string): VoiceProvider {
     case "fish-audio":
       return new FishAudioVoiceProvider();
     case OPENAI_COMPATIBLE_VOICE_PROVIDER_ID:
-      return new OpenAiCompatibleVoiceProvider();
+      return new OpenAiCompatibleVoiceProvider({
+        allowPrivateEndpoint: options.allowPrivateEndpoint,
+      });
     case "scripted":
       if (!scriptedVoiceEnabled()) break;
       return new ScriptedVoiceProvider();

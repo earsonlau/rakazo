@@ -1,5 +1,6 @@
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { AdapterContext } from "@rakazo/adapter-kit";
+import { BOT_SECRET_VALUE_MAX_LENGTH } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "@rakazo/db";
 import { withTransactionRetry } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
@@ -41,15 +42,19 @@ function database() {
   const tables = new Map<string, Row[]>([
     ["secret", []],
     ["botSecret", []],
+    ["vaultCredential", []],
     ["integrationProviderConfig", []],
     ["user", [{ id: "user" }]],
     ["space", [{ id: "space", organizationId: "organization" }]],
     ["organization", [{ id: "organization" }]],
     ["bot", []],
     ["mcpServer", []],
+    ["mcpServerSpace", []],
   ]);
-  const matches = (row: Row, where: Record<string, unknown> = {}) =>
+  const matches = (row: Row, where: Record<string, unknown> = {}): boolean =>
     Object.entries(where).every(([key, value]) => {
+      if (key === "OR")
+        return (value as Array<Record<string, unknown>>).some((branch) => matches(row, branch));
       const actual = row[key as keyof Row];
       if (value && typeof value === "object" && "in" in value)
         return (value.in as unknown[]).includes(actual);
@@ -121,11 +126,16 @@ function database() {
     };
   }
   client.$queryRaw = async (query: { sql: string; values: unknown[] }) => {
+    // Every member is in their Space, so the settings lock (a tagged template) finds the row.
+    if (Array.isArray(query) && query.join("").includes('FROM "space_members"')) {
+      return [{ locked: 1 }];
+    }
     if (!query.sql) return [];
     const table = query.sql.match(/FROM "([^"]+)"/)?.[1];
     const names: Record<string, string> = {
       secrets: "secret",
       bot_secrets: "botSecret",
+      vault_credentials: "vaultCredential",
       integration_provider_configs: "integrationProviderConfig",
       user: "user",
       spaces: "space",
@@ -552,6 +562,7 @@ describe("prepared run-secret writes", () => {
         : undefined;
       Object.assign(prisma, {
         run: { findFirst: async () => ({ botId: "bot", userId: "user" }) },
+        spaceSettingOverride: { findUnique: async () => null },
         message: {
           findFirst: async () => ({
             blocks: [
@@ -608,4 +619,36 @@ describe("prepared run-secret writes", () => {
       }
     },
   );
+
+  it("does not encrypt a secret answer over the value limit", async () => {
+    const store = new EncryptedSecretStore("fake-key");
+    const put = vi.spyOn(store, "put");
+    const prisma = {
+      run: { findFirst: async () => ({ botId: "bot", userId: "user" }) },
+      message: {
+        findFirst: async () => ({
+          blocks: [{ kind: "ask", text: "Code", input: "secret", status: "pending" }],
+        }),
+      },
+    } as unknown as PrismaClient;
+    const writer = createRunSecretWriter(store);
+    const stored = await writer.withPrepared!(
+      prisma,
+      {
+        spaceId: "space",
+        runId: "run",
+        threadId: "thread",
+        messageId: "message",
+        answeredByUserId: "user",
+        answer: "x".repeat(BOT_SECRET_VALUE_MAX_LENGTH + 1),
+      },
+      async (prepared) =>
+        prepared
+          .store({} as Parameters<typeof prepared.store>[0])
+          .then(() => true)
+          .catch(() => false),
+    );
+    expect(stored).toBe(false);
+    expect(put).not.toHaveBeenCalled();
+  });
 });

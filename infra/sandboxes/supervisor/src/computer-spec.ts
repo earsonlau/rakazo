@@ -1,9 +1,45 @@
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import path from "node:path";
 import { MAX_DESKTOP_DISPLAY, screenPorts } from "@rakazo/core/node/desktop-runtime";
 import type Docker from "dockerode";
 
-export const COMPUTER_IMAGE = process.env.RAKAZO_COMPUTER_IMAGE ?? "rakazo/computer:local";
+/**
+ * The computer image. RAKAZO_COMPUTER_IMAGE_TAG is appended the way Compose does, so a
+ * supervisor started outside Compose pulls the same published tag instead of an untagged
+ * (`:latest`) name. An image that already carries a tag or digest is used as is.
+ */
+export function resolveComputerImage(
+  image = process.env.RAKAZO_COMPUTER_IMAGE,
+  tag = process.env.RAKAZO_COMPUTER_IMAGE_TAG,
+): string {
+  const name = image?.trim();
+  if (!name) return "rakazo/computer:local";
+  const wantedTag = tag?.trim();
+  const lastSegment = name.slice(name.lastIndexOf("/") + 1);
+  if (!wantedTag || name.includes("@") || lastSegment.includes(":")) return name;
+  return `${name}:${wantedTag}`;
+}
+
+export const COMPUTER_IMAGE = resolveComputerImage();
+
+/** The files from infra/sandboxes/computer the supervisor sends when it builds the image locally. */
+export const COMPUTER_IMAGE_CONTEXT_FILES = [
+  "Dockerfile",
+  "start.sh",
+  "user-env.sh",
+  "control.py",
+  "xcapture.c",
+  "rakazo-browser",
+  "rakazo-page-browser",
+  "rakazo-browser.desktop",
+  "embed.html",
+  "clipboard-bridge.js",
+  "mobile-keyboard.js",
+  "fluxbox.init",
+  "fluxbox.apps",
+  "fluxbox.menu",
+] as const;
 export const COMPUTER_UID = 1000;
 export const COMPUTER_GID = 1000;
 export const COMPUTER_USER = `${COMPUTER_UID}:${COMPUTER_GID}`;
@@ -38,20 +74,9 @@ export function resolveSpaceComputerLimit(
 }
 
 /**
- * Resource ceilings for a bot computer.
- *
- * A computer runs Xvfb, a window manager and a full Chromium on behalf of an
- * agent that decides for itself what to open. #343 gave these containers a
- * pids ceiling, but Memory and NanoCpus are still unset, so one runaway page is
- * a host-wide memory and CPU event that takes every other bot and the Rakazo
- * services down with it. Every service in docker-compose.prod.yml already
- * carries mem_limit; this applies the same discipline to the containers that
- * actually run untrusted page content.
- *
- * Defaults are a starting point for the Docker computer topology: generous enough
- * for real browsing, small enough that one computer cannot starve the host or
- * sibling bots. The pids default is #343's existing 2048, unchanged. Set any of
- * these to "0", "none" or "unlimited" to opt out.
+ * Resource ceilings for a bot computer, which runs untrusted page content: one
+ * runaway page must not starve the host or sibling bots. Set any of these to
+ * "0", "none" or "unlimited" to opt out.
  */
 const DEFAULT_COMPUTER_MEMORY = "2g";
 const DEFAULT_COMPUTER_CPUS = "2";
@@ -119,7 +144,6 @@ function envOrDefault(name: string, fallback: string): string {
   return raw === undefined || raw.trim() === "" ? fallback : raw;
 }
 
-/** The host resource ceilings applied to every bot computer. */
 export function computerResourceLimits() {
   const memoryBytes = parseMemoryBytes(
     "RAKAZO_COMPUTER_MEMORY",
@@ -150,23 +174,54 @@ export function resolveScreenNetworkMode(value: string | undefined): ScreenNetwo
 }
 
 /**
- * Egress policy for per-bot computer networks. `open` is today's behaviour: full
- * outbound access, including the host's bridge addresses, the LAN, and link-local
- * cloud metadata endpoints. `restricted` keeps public internet egress but lets the
- * operator drop everything else with one host-side iptables rule set — the
- * supervisor gives each computer network a deterministic bridge interface name so
- * the rules match by interface (`-i rakazo-c+`) instead of ephemeral subnets.
- * Enforcement lives on the Docker host (infra/compose/restrict-computer-egress.sh);
- * the flag only marks the networks. Supervisor capabilities stay unchanged.
+ * Egress policy for per-bot computer networks. `open` gives full outbound access,
+ * including the host's bridge addresses, the LAN, and link-local cloud metadata
+ * endpoints. `restricted` keeps public internet egress but lets the operator drop
+ * everything else with one host-side iptables rule set — the supervisor gives each
+ * computer network a deterministic bridge interface name so the rules match by
+ * interface (`-i rakazo-c+`) instead of ephemeral subnets. Enforcement lives on the
+ * Docker host (infra/compose/restrict-computer-egress.sh) and is verified before
+ * computers start (egress-probe.ts). The Compose stacks default to `auto`: restricted
+ * when that check passes, open otherwise, so a stack installed before the rules
+ * existed keeps working on upgrade. Unset here means a host-run supervisor, usually
+ * on Docker Desktop, whose VM-hosted bridges the host rules cannot reach, so it stays
+ * open.
  */
 export type ComputerEgressMode = "open" | "restricted";
+export type ComputerEgressSetting = ComputerEgressMode | "auto";
 
 export function resolveComputerEgressMode(
   value = process.env.SANDBOX_COMPUTER_EGRESS,
-): ComputerEgressMode {
+): ComputerEgressSetting {
   if (value === undefined || value.trim() === "" || value === "open") return "open";
-  if (value === "restricted") return "restricted";
+  if (value === "restricted" || value === "auto") return value;
   throw new Error(`Unsupported SANDBOX_COMPUTER_EGRESS value: ${value}`);
+}
+
+/**
+ * DNS servers for computers, from SANDBOX_COMPUTER_DNS (comma-separated IP addresses).
+ * Unset keeps Docker's default: a computer on its own network asks Docker's embedded
+ * resolver, which forwards to the host's resolvers from inside the computer's network.
+ * Restricted egress drops that forward when the host's resolver has a private address
+ * (a cloud VPC resolver, a LAN router), so every name lookup times out; servers set here
+ * replace the host's as the forward target, and public ones stay reachable.
+ */
+export function resolveComputerDns(value = process.env.SANDBOX_COMPUTER_DNS): string[] | undefined {
+  const servers = (value ?? "")
+    .split(",")
+    .map((server) => server.trim())
+    .filter(Boolean);
+  if (servers.length === 0) return undefined;
+  const invalid = servers.find((server) => isIP(server) === 0);
+  if (invalid) throw new Error(`Unsupported SANDBOX_COMPUTER_DNS server: ${invalid}`);
+  return servers;
+}
+
+/** Whether a container's DNS servers are the ones configured (none configured: none set). */
+export function computerDnsMatches(current: string[] | null | undefined, desired?: string[]) {
+  const have = current ?? [];
+  const want = desired ?? [];
+  return have.length === want.length && have.every((server, index) => server === want[index]);
 }
 
 /**
@@ -194,7 +249,6 @@ export function computerNetworkOwnerFor(
   return createHash("sha256").update(root).digest("hex").slice(0, 32);
 }
 
-/** docker.createNetwork payload for a bot's computer network. */
 export function computerNetworkCreateOptions(
   botId: string,
   owner: string,
@@ -307,6 +361,7 @@ export interface ComputerCreateInput {
   controlToken?: string;
   networkMode?: string;
   publishControlPort?: boolean;
+  dns?: string[];
 }
 
 interface PointerInput {
@@ -369,6 +424,7 @@ export function containerCreateOptions(input: ComputerCreateInput) {
       ReadonlyPaths: ["/usr/share/novnc"],
       AutoRemove: false,
       NetworkMode: input.networkMode ?? "bridge",
+      ...(input.dns ? { Dns: input.dns } : {}),
     },
     WorkingDir: "/home/rakazo",
   };
@@ -391,7 +447,7 @@ export function computerNetworkNameFor(botId: string) {
   return `rakazo-computer-${sanitizeIdentifier(botId).slice(0, 32)}-${hash}`;
 }
 
-/** Current and prior network names used by this PR, for delete cleanup. */
+/** Current and prior network names, for delete cleanup. */
 export function computerNetworkNamesForCleanup(botId: string) {
   const safe = sanitizeIdentifier(botId);
   const digest = createHash("sha256").update(botId).digest("hex");

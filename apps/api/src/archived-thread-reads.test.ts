@@ -48,12 +48,14 @@ function fixture() {
   ]);
   const prisma = {
     bot: { findFirst: findBot },
-    spaceModelPreference: { findFirst: vi.fn(async () => null) },
+    userModelPreference: { findFirst: vi.fn(async () => null) },
+    spaceSettingOverride: { findUnique: vi.fn(async () => null) },
+    userModelRoleChoice: { findMany: vi.fn(async () => []) },
     deploymentSettings: { findUnique: vi.fn(async () => null) },
     $queryRaw: vi.fn(async () => []),
     message: { findMany: findMessages },
     event: { findFirst: vi.fn(async () => null) },
-    run: { findFirst: vi.fn(async () => null) },
+    run: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []) },
     $transaction: vi.fn(async (callback: (tx: unknown) => unknown) => callback(prisma)),
   };
   const deps = {

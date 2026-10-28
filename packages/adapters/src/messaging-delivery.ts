@@ -1,6 +1,8 @@
 import type {
   AdapterContext,
+  ArtifactStore,
   JobPublisher,
+  MessagingOutboundAttachment,
   MessagingOutboundStatus,
   MessagingSurface,
 } from "@rakazo/adapter-kit";
@@ -8,8 +10,16 @@ import { messagingDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
 import { botMessageHopExhausted, nextBotMessageHop } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
-import { appendEventInTransaction, createThreadMessageInTransaction } from "@rakazo/db";
+import {
+  appendEventInTransaction,
+  CrossSpaceCommunicationBlockedError,
+  createThreadMessageInTransaction,
+  crossSpaceCommunicationAllowed,
+  runAsSystem,
+} from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
+import { MessagingSendError } from "./chat-sdk-surface.js";
+import { splitOutboundBody } from "./messaging-platforms.js";
 
 /**
  * Margin under vendor consecutive-outbound caps (sendblue enforces one hard):
@@ -26,6 +36,7 @@ export interface MessagingDeliveryDeps {
   messaging: MessagingSurface;
   events: Pick<ThreadEvents, "sendUserMessage" | "notify">;
   jobs: Pick<JobPublisher, "enqueue">;
+  artifacts: Pick<ArtifactStore, "get">;
 }
 
 type IdentityRow = {
@@ -37,13 +48,9 @@ type IdentityRow = {
 };
 
 /**
- * Automatic mirror, not a send tool: every text-bearing bot message of a
- * messaging run is copied into the uniform outbox and sent, so delivery does
- * not depend on prompt compliance. DM runs go to the owner's conversation;
- * channel runs go to the group with an attribution prefix and are fanned
- * out internally to peer approved bots (agent-to-agent traffic never
- * transits the messaging provider). Also drains pending outbox rows (invites
- * and intros are enqueued by the channels slice).
+ * Automatic mirror, not a send tool, so delivery does not depend on prompt
+ * compliance. Agent-to-agent fan-out stays internal and never transits the
+ * messaging provider. Also drains outbox rows the channels slice enqueued.
  */
 export async function deliverMessagingOutbound(
   deps: MessagingDeliveryDeps,
@@ -102,15 +109,35 @@ async function mirrorRun(deps: MessagingDeliveryDeps, runId: string): Promise<vo
     where: { runId: run.id, role: "bot" },
     orderBy: { seq: "asc" },
   });
+  const sendsFiles = deps.messaging
+    .platforms()
+    .some((platform) => platform.provider === identity.provider && platform.capabilities.files);
+  // One row per platform-sized part, then one per image or file, so a retry
+  // re-sends only the parts that failed and never repeats delivered text.
+  // Explicit createdAt keeps the parts in order for the drain.
+  const createdAt = Date.now();
   const rows = messages
-    .map((message) => ({
-      idempotencyKey: `msg:${message.id}`,
-      kind: "dm",
-      identityId: identity.id,
-      body: extractText(message.blocks),
-      sourceMessageId: message.id,
-    }))
-    .filter((row) => row.body);
+    .flatMap((message) => {
+      const body = extractText(message.blocks);
+      const parts = body ? splitOutboundBody(identity.provider, body) : [];
+      return [
+        ...parts.map((part, index) => ({
+          idempotencyKey: index === 0 ? `msg:${message.id}` : `msg:${message.id}:${index + 1}`,
+          kind: "dm",
+          identityId: identity.id,
+          body: part,
+          sourceMessageId: message.id,
+        })),
+        ...(sendsFiles ? extractArtifactIds(message.blocks) : []).map((artifactId) => ({
+          idempotencyKey: `msg:${message.id}:file:${artifactId}`,
+          kind: "dm",
+          identityId: identity.id,
+          body: "",
+          sourceMessageId: message.id,
+        })),
+      ];
+    })
+    .map((row, index) => ({ ...row, createdAt: new Date(createdAt + index) }));
   if (rows.length === 0) return;
   // Atomic dedupe: a concurrent messaging.deliver for the same run loses on
   // the idempotencyKey unique key instead of throwing P2002.
@@ -182,12 +209,40 @@ async function mirrorChannelRun(
       NOT: { identityId: identity.id },
     },
   });
+  // Peer bots belong to other members, usually in other Spaces.
+  await runAsSystem("fan a group post out to peer bots in other Spaces", () =>
+    fanOutToPeers(deps, { identity, channel, channelBlock, fromLabel, hop, peers, messages }),
+  );
+}
+
+async function fanOutToPeers(
+  deps: MessagingDeliveryDeps,
+  {
+    identity,
+    channel,
+    channelBlock,
+    fromLabel,
+    hop,
+    peers,
+    messages,
+  }: {
+    identity: { provider: string; address: string; botId: string };
+    channel: { id: string; name: string | null };
+    channelBlock: Extract<MessageBlock, { kind: "channel_message" }>;
+    fromLabel: string;
+    hop: number;
+    peers: Array<{ identityId: string | null }>;
+    messages: Array<{ message: { id: string }; text: string }>;
+  },
+): Promise<void> {
   for (const { message, text } of messages) {
     for (const peer of peers) {
       const peerIdentity = await deps.prisma.messagingIdentity.findUnique({
         where: { id: peer.identityId! },
       });
       if (!peerIdentity) continue;
+      if (!(await crossSpaceCommunicationAllowed(deps.prisma, identity.botId, peerIdentity.botId)))
+        continue;
       const peerThread = await deps.prisma.thread.findFirst({
         where: { botId: peerIdentity.botId },
       });
@@ -211,17 +266,23 @@ async function mirrorChannelRun(
         ? new RegExp(`@${escapeRegExp(peerBot.name)}\\b`, "i").test(text)
         : false;
       if (mentioned && !botMessageHopExhausted(hop)) {
-        const sent = await deps.events.sendUserMessage({
-          spaceId: peerIdentity.spaceId,
-          threadId: peerThread.id,
-          botId: peerIdentity.botId,
-          userId: peerIdentity.userId,
-          blocks: [block],
-          prompt: `[Group "${channel.name ?? "group"}" — ${fromLabel}]: ${text}`,
-          trigger: "messaging",
-          clientNonce,
-        });
-        if (sent.runId) {
+        const sent = await deps.events
+          .sendUserMessage({
+            spaceId: peerIdentity.spaceId,
+            threadId: peerThread.id,
+            botId: peerIdentity.botId,
+            userId: peerIdentity.userId,
+            blocks: [block],
+            prompt: `[Group "${channel.name ?? "group"}" — ${fromLabel}]: ${text}`,
+            trigger: "messaging",
+            clientNonce,
+            crossSpaceSenderBotId: identity.botId,
+          })
+          .catch((error: unknown) => {
+            if (error instanceof CrossSpaceCommunicationBlockedError) return null;
+            throw error;
+          });
+        if (sent?.runId) {
           await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
             getLogger().error("messaging peer wake enqueue error", error);
           });
@@ -233,22 +294,29 @@ async function mirrorChannelRun(
         where: { threadId_clientNonce: { threadId: peerThread.id, clientNonce } },
       });
       if (existing) continue;
-      const event = await deps.prisma.$transaction(async (tx) => {
-        const created = await createThreadMessageInTransaction(tx, {
-          threadId: peerThread.id,
-          role: "user",
-          blocks: [block],
-          clientNonce,
+      const event = await deps.prisma
+        .$transaction(async (tx) => {
+          const created = await createThreadMessageInTransaction(tx, {
+            threadId: peerThread.id,
+            role: "user",
+            blocks: [block],
+            clientNonce,
+          });
+          if (!(await crossSpaceCommunicationAllowed(tx, identity.botId, peerIdentity.botId)))
+            throw new CrossSpaceCommunicationBlockedError();
+          return appendEventInTransaction(tx, {
+            spaceId: peerIdentity.spaceId,
+            threadId: peerThread.id,
+            botId: peerIdentity.botId,
+            type: "thread.message.created",
+            payload: { messageId: created.id, role: "user", blocks: [block] },
+          });
+        })
+        .catch((error: unknown) => {
+          if (error instanceof CrossSpaceCommunicationBlockedError) return null;
+          throw error;
         });
-        return appendEventInTransaction(tx, {
-          spaceId: peerIdentity.spaceId,
-          threadId: peerThread.id,
-          botId: peerIdentity.botId,
-          type: "thread.message.created",
-          payload: { messageId: created.id, role: "user", blocks: [block] },
-        });
-      });
-      await deps.events.notify(peerThread.id, event.seq).catch(() => undefined);
+      if (event) await deps.events.notify(peerThread.id, event.seq).catch(() => undefined);
     }
   }
 }
@@ -287,13 +355,18 @@ async function sendConnectInvite(
   try {
     return await deps.prisma.$transaction(
       async (tx) => {
+        const communicationAllowed = await crossSpaceCommunicationAllowed(
+          tx,
+          pair.requesterBotId,
+          pair.targetBotId,
+        );
         const locked = await tx.$queryRaw<Array<{ status: string }>>`
           SELECT status FROM agent_connections
           WHERE "requesterBotId" = ${pair.requesterBotId}
             AND "targetBotId" = ${pair.targetBotId}
           FOR UPDATE
         `;
-        if (locked[0]?.status !== "pending") {
+        if (locked[0]?.status !== "pending" || !communicationAllowed) {
           await tx.messagingOutbound.updateMany({
             where: { id: row.id },
             data: { status: "failed" },
@@ -327,15 +400,27 @@ async function sendConnectInvite(
 }
 
 async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Promise<void> {
-  const now = new Date();
+  const now = Date.now();
   const pending = await deps.prisma.messagingOutbound.findMany({
-    where: {
-      status: "pending",
-      OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
-    },
+    where: { status: "pending" },
     orderBy: { createdAt: "asc" },
   });
+  // Keep each conversation in order: a row waiting out a backoff, held at
+  // the cap, or failing now holds back the later rows to the same place.
+  const held = new Set<string>();
   for (const row of pending) {
+    const destination = row.identityId ?? row.threadId ?? row.id;
+    if (held.has(destination)) continue;
+    if (row.nextAttemptAt && row.nextAttemptAt.getTime() > now) {
+      held.add(destination);
+      continue;
+    }
+    // A later part of a split reply waits until the earlier parts are out;
+    // another drain may hold one of them in flight.
+    if (await hasUndeliveredEarlierPart(deps, row, now)) {
+      held.add(destination);
+      continue;
+    }
     // Claim before sending: concurrent drains (job keys are per runId) and
     // crash retries must never deliver the same message twice.
     const claim = await deps.prisma.messagingOutbound.updateMany({
@@ -343,6 +428,8 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
       data: { status: "sent", nextAttemptAt: null },
     });
     if (claim.count === 0) continue;
+    let attachmentName: string | null = null;
+    let accepted = false;
     try {
       if (row.kind === "group" || row.kind === "intro") {
         if (!row.threadId) {
@@ -356,6 +443,7 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
           { threadId: row.threadId, body: row.body },
           context,
         );
+        accepted = true;
         await deps.prisma.messagingOutbound.update({
           where: { id: row.id },
           data: { providerHandle: sent.handle },
@@ -383,6 +471,7 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
           where: { id: row.id },
           data: { status: "pending" },
         });
+        held.add(destination);
         continue;
       }
       const threadId = await resolveDirectThread(deps, identity, context);
@@ -396,6 +485,7 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
           context,
         );
         if (result === "delivered") {
+          accepted = true;
           await deps.prisma.messagingIdentity.update({
             where: { id: identity.id },
             data: { outboundSinceInbound: { increment: 1 } },
@@ -403,7 +493,35 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
         }
         continue;
       }
-      const sent = await deps.messaging.sendToThread({ threadId, body: row.body }, context);
+      let attachment: MessagingOutboundAttachment | undefined;
+      const artifactId = fileArtifactId(row.idempotencyKey);
+      if (artifactId) {
+        // Scoped to the identity's Space: the drain runs across every Space.
+        const artifact = await deps.prisma.artifact.findFirst({
+          where: { id: artifactId, spaceId: identity.spaceId },
+          select: { name: true, mimeType: true, storageKey: true, userId: true },
+        });
+        if (!artifact) {
+          // Deleted since the reply was mirrored, or not in this Space.
+          await deps.prisma.messagingOutbound.update({
+            where: { id: row.id },
+            data: { status: "failed" },
+          });
+          continue;
+        }
+        attachmentName = artifact.name;
+        const data = await deps.artifacts.get(artifact.storageKey, {
+          ...context,
+          spaceId: identity.spaceId,
+          userId: artifact.userId,
+        });
+        attachment = { name: artifact.name, mimeType: artifact.mimeType, data };
+      }
+      const sent = await deps.messaging.sendToThread(
+        { threadId, body: row.body, ...(attachment ? { attachment } : {}) },
+        context,
+      );
+      accepted = true;
       await deps.prisma.messagingOutbound.updateMany({
         where: { id: row.id },
         data: { providerHandle: sent.handle },
@@ -412,22 +530,56 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
         where: { id: identity.id },
         data: { outboundSinceInbound: { increment: 1 } },
       });
-    } catch {
+    } catch (error) {
+      if (accepted) {
+        // Keep the sent claim even if saving the handle or counter fails.
+        getLogger().error("messaging outbound bookkeeping error", error);
+        continue;
+      }
       // Transient provider errors go back to pending with a backed-off
-      // retry; only an exhausted budget is terminal.
+      // retry (no sooner than the provider's retry-after); a permanent error
+      // or an exhausted budget is terminal.
+      held.add(destination);
+      const failure = error instanceof MessagingSendError ? error : null;
       const attempts = (row.attempts ?? 0) + 1;
-      const exhausted = attempts >= MESSAGING_OUTBOUND_MAX_ATTEMPTS;
-      const retryAt = exhausted
-        ? null
-        : new Date(Date.now() + messagingOutboundRetryDelayMs(attempts));
-      await deps.prisma.messagingOutbound.updateMany({
+      const exhausted = failure?.permanent || attempts >= MESSAGING_OUTBOUND_MAX_ATTEMPTS;
+      const delayMs = Math.max(messagingOutboundRetryDelayMs(attempts), failure?.retryAfterMs ?? 0);
+      const retryAt = exhausted ? null : new Date(Date.now() + delayMs);
+      const outcome = {
         where: { id: row.id },
         data: {
           attempts,
           status: exhausted ? "failed" : "pending",
           nextAttemptAt: retryAt,
         },
-      });
+      };
+      if (exhausted && attachmentName) {
+        // The reply's text went out on its own rows; say the file did not
+        // follow instead of dropping it silently. Saved with the failure so
+        // one cannot land without the other, keyed so it is queued once, and
+        // given the file's place so later replies wait behind it.
+        const name = attachmentName;
+        await deps.prisma.$transaction(async (tx) => {
+          await tx.messagingOutbound.updateMany(outcome);
+          await tx.messagingOutbound.createMany({
+            data: [
+              {
+                idempotencyKey: `${row.idempotencyKey}:notice`,
+                kind: row.kind,
+                identityId: row.identityId,
+                threadId: row.threadId,
+                body: `Could not send "${name}".`,
+                sourceMessageId: row.sourceMessageId,
+                createdAt: row.createdAt,
+              },
+            ],
+            skipDuplicates: true,
+          });
+        });
+        await deps.jobs.enqueue(messagingDeliverJob());
+        continue;
+      }
+      await deps.prisma.messagingOutbound.updateMany(outcome);
       if (!exhausted && retryAt) {
         // Propagate an enqueue failure: the messaging.deliver job then fails
         // and the queue's own retry re-runs the drain. Swallowing it would
@@ -438,6 +590,33 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
       }
     }
   }
+}
+
+/** A claimed part still without a handle after this long is treated as abandoned. */
+const MESSAGING_PART_IN_FLIGHT_MS = 2 * 60_000;
+
+async function hasUndeliveredEarlierPart(
+  deps: MessagingDeliveryDeps,
+  row: { idempotencyKey: string; sourceMessageId: string | null; createdAt: Date },
+  now: number,
+): Promise<boolean> {
+  if (!row.sourceMessageId || row.idempotencyKey === `msg:${row.sourceMessageId}`) return false;
+  const earlier = await deps.prisma.messagingOutbound.findFirst({
+    where: {
+      sourceMessageId: row.sourceMessageId,
+      createdAt: { lt: row.createdAt },
+      OR: [
+        { status: "pending" },
+        {
+          status: "sent",
+          providerHandle: null,
+          updatedAt: { gt: new Date(now - MESSAGING_PART_IN_FLIGHT_MS) },
+        },
+      ],
+    },
+    select: { id: true },
+  });
+  return earlier !== null;
 }
 
 /**
@@ -463,7 +642,6 @@ async function resolveDirectThread(
   return threadId;
 }
 
-/** Exponential backoff per attempt, capped at one minute. */
 function messagingOutboundRetryDelayMs(attempts: number): number {
   return Math.min(2 ** attempts * 1000, 60_000);
 }
@@ -473,17 +651,31 @@ export async function applyMessagingOutboundStatus(
   prisma: PrismaClient,
   event: MessagingOutboundStatus,
 ): Promise<void> {
-  const status =
-    event.status === "ERROR" || event.status === "DECLINED"
-      ? "failed"
-      : event.status === "SENT" || event.status === "DELIVERED"
-        ? "sent"
-        : null;
+  const status = ["ERROR", "DECLINED", "FAILED"].includes(event.status)
+    ? "failed"
+    : ["SENT", "DELIVERED", "READ"].includes(event.status)
+      ? "sent"
+      : null;
   if (!status) return;
   await prisma.messagingOutbound.updateMany({
     where: { providerHandle: event.handle },
     data: { status },
   });
+}
+
+/** The artifact a reply's file row sends, from its `msg:<message>:file:<artifact>` key. */
+function fileArtifactId(idempotencyKey: string): string | null {
+  return /^msg:[^:]+:file:([^:]+)$/.exec(idempotencyKey)?.[1] ?? null;
+}
+
+/** Artifacts of the message's image and file blocks, in block order. */
+function extractArtifactIds(blocks: unknown): string[] {
+  if (!Array.isArray(blocks)) return [];
+  return blocks.flatMap((block: { kind?: unknown; artifactId?: unknown } | null) =>
+    (block?.kind === "image" || block?.kind === "file") && typeof block.artifactId === "string"
+      ? [block.artifactId]
+      : [],
+  );
 }
 
 function extractText(blocks: unknown): string {

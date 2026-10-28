@@ -3,7 +3,7 @@ import { captureScreenshot, completeOnboarding, openUserSettings, signup } from 
 
 test.use({ timezoneId: "Pacific/Auckland" });
 
-test("timezone setting adopts the browser zone, saves a choice, and offers this device's zone back", async ({
+test("account settings save the timezone and offer this device's zone back", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
@@ -11,7 +11,7 @@ test("timezone setting adopts the browser zone, saves a choice, and offers this 
   await completeOnboarding(page);
 
   const settings = await openUserSettings(page);
-  await expect(settings.getByRole("heading", { name: "Timezone", exact: true })).toBeVisible();
+
   const select = settings.getByRole("combobox", { name: "Timezone" });
   // First sign-in saves the browser's zone without asking.
   await expect(select).toHaveValue("Pacific/Auckland");
@@ -23,9 +23,9 @@ test("timezone setting adopts the browser zone, saves a choice, and offers this 
   await useDevice.scrollIntoViewIfNeeded();
   await captureScreenshot(page, testInfo, "account-timezone-setting");
 
-  // A saved choice survives a reload; the browser zone does not overwrite it.
+  // Saved choices survive a reload, which keeps settings open; the browser zone does not overwrite the timezone.
   await page.reload();
-  const reopened = await openUserSettings(page);
+  const reopened = page.getByTestId("user-settings");
   await expect(reopened.getByRole("combobox", { name: "Timezone" })).toHaveValue("Europe/London");
 
   await reopened.getByRole("button", { name: "Use Pacific/Auckland" }).click();

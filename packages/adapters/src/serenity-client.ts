@@ -1,21 +1,18 @@
-import { isIP } from "node:net";
+import { lookup } from "node:dns/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { isLocalMcpHost } from "@rakazo/contracts";
+import {
+  ipVersion,
+  isCloudMetadataAddress,
+  isLocalhostOrLoopbackIp,
+  isNonPublicAddress,
+} from "@rakazo/contracts";
 import { Agent } from "undici";
 import { combineSignals } from "./connector-safety.js";
-import {
-  createAddressCheckedLookup,
-  isCloudMetadataAddress,
-  isPrivateAddress,
-  type ResolvedAddress,
-  type ResolveHostname,
-} from "./network-address.js";
-import {
-  createSafeRemoteFetch,
-  type RemoteTransportDependencies,
-  type SafeRemoteFetch,
-} from "./remote-mcp.js";
+import type { ResolvedAddress, ResolveHostname } from "./network-address.js";
+import { createAddressCheckedLookup } from "./network-address.js";
+import type { RemoteTransportDependencies, SafeRemoteFetch } from "./remote-mcp.js";
+import { createSafeRemoteFetch } from "./remote-mcp.js";
 import { fetchPairedWithDispatcher } from "./undici-fetch.js";
 import { isBlockedHostname } from "./web-ssrf.js";
 
@@ -25,6 +22,8 @@ export const MAX_SERENITY_FACT_CHARS = 10_000;
 /** Hosted Serenity rejects larger facts; self-hosted brains share the same bound. */
 export const MAX_SERENITY_FACT_BYTES = 4096;
 export const MAX_SERENITY_PROVENANCE_CHARS = 500;
+/** The most facts one recall returns. */
+const MAX_SERENITY_RECALL_LIMIT = 100;
 
 export type SerenityNetworkDependencies = RemoteTransportDependencies;
 
@@ -97,11 +96,11 @@ function hostnameOf(url: URL): string {
 }
 
 /** Loopback, RFC1918/ULA literals, or HTTP need deployment-owner authorization. */
-export function serenityEndpointRequiresDeploymentOwner(endpoint: string): boolean {
+export function serenityEndpointRequiresPrivateEndpoint(endpoint: string): boolean {
   const url = parseSerenityEndpoint(endpoint);
   const host = hostnameOf(url);
-  if (isLocalMcpHost(host) || isBlockedHostname(host)) return true;
-  if (isIP(host) !== 0) return isPrivateAddress(host);
+  if (isLocalhostOrLoopbackIp(host) || isBlockedHostname(host)) return true;
+  if (ipVersion(host) !== 0) return isNonPublicAddress(host);
   // Unresolved public-looking hostnames may still be LAN DNS over HTTP.
   return url.protocol === "http:";
 }
@@ -115,14 +114,10 @@ export async function classifySerenityEndpointTrust(
   resolveHostname?: ResolveHostname,
 ): Promise<"private" | "public"> {
   const url = parseSerenityEndpoint(endpoint);
-  if (serenityEndpointRequiresDeploymentOwner(url.href)) return "private";
+  if (serenityEndpointRequiresPrivateEndpoint(url.href)) return "private";
   const host = hostnameOf(url);
   const resolve =
-    resolveHostname ??
-    (async (hostname: string) => {
-      const { lookup } = await import("node:dns/promises");
-      return lookup(hostname, { all: true, verbatim: true });
-    });
+    resolveHostname ?? ((hostname: string) => lookup(hostname, { all: true, verbatim: true }));
   const addresses = await resolve(host);
   if (addresses.length === 0) {
     throw new Error("Serenity endpoint did not resolve to an address.");
@@ -130,7 +125,7 @@ export async function classifySerenityEndpointTrust(
   if (addresses.some((entry) => isCloudMetadataAddress(entry.address))) {
     throw new Error("Serenity endpoint targets a blocked address.");
   }
-  if (addresses.some((entry) => isPrivateAddress(entry.address))) return "private";
+  if (addresses.some((entry) => isNonPublicAddress(entry.address))) return "private";
   return "public";
 }
 
@@ -141,7 +136,7 @@ function assertAllowedSerenityEndpoint(url: URL): void {
   }
   if (url.protocol === "http:") {
     // Bearer tokens stay on the wire; only loopback may use cleartext HTTP.
-    if (!isLocalMcpHost(host)) {
+    if (!isLocalhostOrLoopbackIp(host)) {
       throw new Error(
         "Serenity HTTP endpoints are limited to loopback (localhost / 127.0.0.1 / ::1); use HTTPS for LAN or public hosts.",
       );
@@ -221,17 +216,14 @@ function serenityFetchPath(
   config: SerenityConnectionConfig,
   url: URL,
 ): "private-literal" | "private-dns" | "public" {
-  if (config.endpointTrust === "private" || serenityEndpointRequiresDeploymentOwner(url.href)) {
-    return isIP(hostnameOf(url)) !== 0 ? "private-literal" : "private-dns";
+  if (config.endpointTrust === "private" || serenityEndpointRequiresPrivateEndpoint(url.href)) {
+    return ipVersion(hostnameOf(url)) !== 0 ? "private-literal" : "private-dns";
   }
   return "public";
 }
 
 function defaultResolveHostname(): ResolveHostname {
-  return async (hostname: string) => {
-    const { lookup } = await import("node:dns/promises");
-    return lookup(hostname, { all: true, verbatim: true });
-  };
+  return (hostname: string) => lookup(hostname, { all: true, verbatim: true });
 }
 
 function assertPrivateLanAddresses(addresses: ResolvedAddress[]): void {
@@ -241,7 +233,7 @@ function assertPrivateLanAddresses(addresses: ResolvedAddress[]): void {
   if (addresses.some((entry) => isCloudMetadataAddress(entry.address))) {
     throw new Error("Serenity endpoint targets a blocked address.");
   }
-  if (addresses.some((entry) => !isPrivateAddress(entry.address))) {
+  if (addresses.some((entry) => !isNonPublicAddress(entry.address))) {
     throw new Error("Serenity endpoint no longer resolves to a private address.");
   }
 }
@@ -386,15 +378,18 @@ export async function probeSerenity(
   }
 }
 
+/**
+ * Lists an entity's newest facts, up to the server maximum. Recall's `query` only drives a
+ * separate page search; facts are filtered by entity and sorted newest first regardless of it,
+ * so the query is omitted and callers rank the facts themselves.
+ */
 export async function recallSerenity(
-  query: string,
   config: SerenityConnectionConfig,
   options: {
-    limit: number;
     entity?: string;
     signal?: AbortSignal;
     network?: SerenityNetworkDependencies;
-  },
+  } = {},
 ): Promise<SerenityResult<SerenityRecallFact[]>> {
   try {
     const payload = await withSerenityClient(
@@ -405,8 +400,7 @@ export async function recallSerenity(
           {
             name: "recall",
             arguments: {
-              query,
-              limit: Math.min(Math.max(1, Math.floor(options.limit)), 50),
+              limit: MAX_SERENITY_RECALL_LIMIT,
               ...(options.entity ? { entity: options.entity } : {}),
             },
           },
@@ -421,7 +415,7 @@ export async function recallSerenity(
       },
       options.network,
     );
-    return { ok: true, value: parseRecallFacts(payload).slice(0, options.limit) };
+    return { ok: true, value: parseRecallFacts(payload) };
   } catch (error) {
     return {
       ok: false,

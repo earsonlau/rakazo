@@ -1,7 +1,70 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { redactBindings, redactSensitiveText } from "./redaction.js";
 
 describe("redaction", () => {
+  it("preserves numeric request budgets without exposing token values or content", () => {
+    expect(
+      redactBindings({
+        requestedMaxTokens: 2048,
+        nested: { effective_max_tokens: 512 },
+        items: [{ effectiveMaxTokens: 0, accessToken: 1234 }],
+        token: 1234,
+        prompt: "fixture content",
+      }),
+    ).toEqual({
+      requestedMaxTokens: 2048,
+      nested: { effective_max_tokens: 512 },
+      items: [{ effectiveMaxTokens: 0, accessToken: "[Redacted]" }],
+      token: "[Redacted]",
+      prompt: "[Redacted]",
+    });
+  });
+
+  it.each([
+    "fixture-secret",
+    { apiKey: "fixture-secret" },
+    ["fixture-secret"],
+    null,
+    -1,
+    0.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.MAX_SAFE_INTEGER + 1,
+  ])("redacts non-count values in budget fields: %j", (value) => {
+    expect(redactBindings({ requestedMaxTokens: value, effectiveMaxTokens: value })).toEqual({
+      requestedMaxTokens: "[Redacted]",
+      effectiveMaxTokens: "[Redacted]",
+    });
+  });
+
+  it("handles a full-envelope-sized failed email candidate without blocking", () => {
+    const moduleUrl = new URL("./redaction.ts", import.meta.url).href;
+    // A child deadline also catches synchronous regex stalls that block the test runner's timers.
+    const output = execFileSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "-e",
+        `import { redactSensitiveText } from ${JSON.stringify(moduleUrl)};
+         const text = "a.".repeat(512 * 1024);
+         process.stdout.write(String(redactSensitiveText(text) === text));`,
+      ],
+      { encoding: "utf8", timeout: 5_000 },
+    );
+    expect(output).toBe("true");
+  });
+
+  it("keeps non-email candidates and redacts adjacent and punctuated email addresses", () => {
+    expect(
+      redactSensitiveText(
+        "a.b.c a-b-c (first.last+tag@example.com), next@example.net+other@example.org",
+      ),
+    ).toBe("a.b.c a-b-c ([Redacted]), [Redacted][Redacted]");
+  });
+
   it("redacts secrets, credentials, and message bodies", () => {
     const redacted = redactBindings({
       "user.id": "user-1",
@@ -25,6 +88,60 @@ describe("redaction", () => {
     expect(redacted.query).toBe("[Redacted]");
     expect(redacted.apiKey).toBe("[Redacted]");
     expect(redacted.nested).toEqual({ password: "[Redacted]", token: "[Redacted]", safe: true });
+  });
+
+  it("redacts message content keys at any depth", () => {
+    const contentKeys = [
+      "content",
+      "text",
+      "blocks",
+      "parts",
+      "input",
+      "output",
+      "stdout",
+      "stderr",
+      "arguments",
+      "transcript",
+      "completion",
+      "html",
+      "markdown",
+    ];
+    const payload = Object.fromEntries(contentKeys.map((key) => [key, `private ${key}`]));
+
+    const redacted = redactBindings({
+      ...payload,
+      Stdout: "private Stdout",
+      nested: { tool: { name: "shell", ...payload } },
+      items: [{ id: "a", ...payload }],
+    });
+
+    for (const key of contentKeys) expect(redacted[key]).toBe("[Redacted]");
+    expect(redacted.Stdout).toBe("[Redacted]");
+    expect(redacted.nested).toEqual({
+      tool: { name: "shell", ...Object.fromEntries(contentKeys.map((key) => [key, "[Redacted]"])) },
+    });
+    expect(redacted.items).toEqual([
+      { id: "a", ...Object.fromEntries(contentKeys.map((key) => [key, "[Redacted]"])) },
+    ]);
+    expect(JSON.stringify(redacted)).not.toContain("private");
+  });
+
+  it("keeps metadata fields whose names only contain a content key", () => {
+    const redacted = redactBindings({
+      "output.chars": 120,
+      "stdout.bytes": 4,
+      "text.length": 9,
+      "content.type": "text/plain",
+      "input.items": 30,
+    });
+
+    expect(redacted).toEqual({
+      "output.chars": 120,
+      "stdout.bytes": 4,
+      "text.length": 9,
+      "content.type": "text/plain",
+      "input.items": 30,
+    });
   });
 
   it("replaces circular values", () => {

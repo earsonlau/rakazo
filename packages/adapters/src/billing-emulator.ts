@@ -1,19 +1,27 @@
 import type {
+  BillingByokCheckoutRequest,
   BillingCheckoutRequest,
+  BillingCreditCheckoutRequest,
+  BillingCreditPurchase,
   BillingPrice,
   BillingProvider,
   BillingSubscriptionSnapshot,
   BillingSubscriptionStatus,
 } from "@rakazo/adapter-kit";
+import { BillingCheckoutCompletedError, BillingCustomerNotFoundError } from "@rakazo/adapter-kit";
 import {
+  holdsBillingSubscription,
   parseStripeWebhook,
   pickBillingSubscription,
   signStripeWebhook,
 } from "./stripe-billing.js";
 
 const WEBHOOK_SECRET = "billing-emulator-webhook-secret";
+const BYOK_PRICE_ID = "price_byok_emulated";
 
 export interface BillingEmulatorOptions {
+  namespace?: string;
+  modelCredits?: boolean;
   price?: BillingPrice;
   now?: () => number;
 }
@@ -23,13 +31,21 @@ type EmulatedSubscription = BillingSubscriptionSnapshot & { customerId: string; 
 /** Offline, deterministic billing provider for development and tests. */
 export class BillingEmulator implements BillingProvider {
   readonly price: BillingPrice;
+  readonly modelCredits: boolean;
+  readonly creditCheckouts = new Map<string, BillingCreditCheckoutRequest>();
+  readonly byokCheckouts = new Map<string, BillingByokCheckoutRequest>();
+  readonly creditPurchases = new Map<string, BillingCreditPurchase[]>();
   readonly customers = new Map<string, { email: string; organizationId: string }>();
   readonly checkouts = new Map<string, BillingCheckoutRequest>();
   readonly subscriptions: EmulatedSubscription[] = [];
   private readonly now: () => number;
   private sequence = 0;
+  private customerSequence = 0;
+  private readonly namespace: string;
 
   constructor(options: BillingEmulatorOptions = {}) {
+    this.modelCredits = options.modelCredits === true;
+    this.namespace = options.namespace ?? "emulated";
     this.price = options.price ?? {
       amount: 1000,
       currency: "usd",
@@ -44,7 +60,7 @@ export class BillingEmulator implements BillingProvider {
       id: "billing-emulator",
       contractVersion: "1",
       adapterVersion: "0.1.0",
-      capabilities: { trials: true, portal: true },
+      capabilities: { trials: true, portal: true, modelCredits: this.modelCredits },
     };
   }
 
@@ -53,17 +69,126 @@ export class BillingEmulator implements BillingProvider {
   }
 
   async createCustomer(input: { email: string; organizationId: string }) {
-    for (const [customerId, customer] of this.customers)
-      if (customer.organizationId === input.organizationId) return { customerId };
-    const customerId = `cus_emulated_${this.customers.size + 1}`;
+    const customerId = `cus_${this.namespace}_${++this.customerSequence}`;
     this.customers.set(customerId, { ...input });
     return { customerId };
   }
 
   async createCheckout(input: BillingCheckoutRequest) {
     this.requireCustomer(input.customerId);
+    if (this.forCustomer(input.customerId).some((s) => holdsBillingSubscription(s.status)))
+      throw new BillingCheckoutCompletedError();
     this.checkouts.set(input.customerId, { ...input });
     return { url: `https://billing.emulator.invalid/checkout/${input.customerId}` };
+  }
+
+  async createCreditCheckout(input: BillingCreditCheckoutRequest) {
+    this.requireCustomer(input.customerId);
+    if (
+      input.monthly &&
+      this.forCustomer(input.customerId).some(
+        (s) => s.priceId !== BYOK_PRICE_ID && holdsBillingSubscription(s.status),
+      )
+    )
+      throw new BillingCheckoutCompletedError();
+    this.creditCheckouts.set(input.customerId, input);
+    return { url: `https://billing.emulator.invalid/credits/${input.customerId}` };
+  }
+
+  async createByokCheckout(input: BillingByokCheckoutRequest) {
+    this.requireCustomer(input.customerId);
+    if (this.forCustomer(input.customerId).some((s) => holdsBillingSubscription(s.status)))
+      throw new BillingCheckoutCompletedError();
+    this.byokCheckouts.set(input.customerId, input);
+    return { url: `https://billing.emulator.invalid/byok/${input.customerId}` };
+  }
+
+  async endByokPlans(customerId: string) {
+    for (const subscription of this.forCustomer(customerId))
+      if (subscription.priceId === BYOK_PRICE_ID) subscription.cancelAtPeriodEnd = true;
+  }
+
+  /** Test helper: the customer pays for the own-key plan checkout they started. */
+  completeByokCheckout(customerId: string) {
+    const checkout = this.byokCheckouts.get(customerId);
+    if (!checkout) throw new Error("No own-key checkout");
+    this.byokCheckouts.delete(customerId);
+    const n = ++this.sequence;
+    const trialEndsAt = checkout.trialDays
+      ? new Date(this.now() + checkout.trialDays * 86400000)
+      : null;
+    this.subscriptions.push({
+      customerId,
+      created: Math.floor(this.now() / 1000) + n,
+      subscriptionId: `sub_byok_${n}`,
+      subscriptionItemId: `si_byok_${n}`,
+      priceId: BYOK_PRICE_ID,
+      byokPlan: true,
+      status: trialEndsAt ? "trialing" : "active",
+      seats: 1,
+      trialEndsAt,
+      currentPeriodEndsAt: trialEndsAt ?? new Date(this.now() + 30 * 86400000),
+      cancelAtPeriodEnd: false,
+      endedAt: null,
+    });
+    return `sub_byok_${n}`;
+  }
+
+  async listCreditPurchases(customerId: string) {
+    this.requireCustomer(customerId);
+    this.renewCredits(customerId);
+    return [...(this.creditPurchases.get(customerId) ?? [])];
+  }
+
+  async setMonthlyCredits(customerId: string, amountCents: number) {
+    this.renewCredits(customerId);
+    const chosen = pickBillingSubscription(this.forCustomer(customerId));
+    if (!chosen?.creditAmountCents) throw new Error("No monthly credit subscription");
+    if (amountCents > chosen.creditAmountCents) {
+      this.creditPurchases.set(customerId, [
+        ...(this.creditPurchases.get(customerId) ?? []),
+        {
+          id: `upgrade_${this.namespace}_${++this.sequence}`,
+          amountCents: amountCents - chosen.creditAmountCents,
+          expiresAt: chosen.currentPeriodEndsAt?.toISOString(),
+        },
+      ]);
+    }
+    chosen.creditAmountCents = amountCents;
+  }
+
+  completeCreditCheckout(customerId: string) {
+    const checkout = this.creditCheckouts.get(customerId);
+    if (!checkout) throw new Error("No credit checkout");
+    this.creditCheckouts.delete(customerId);
+    const purchase = {
+      id: `credit_${this.namespace}_${++this.sequence}`,
+      amountCents: checkout.amountCents,
+      ...(checkout.monthly
+        ? { expiresAt: new Date(this.now() + 30 * 86400000).toISOString() }
+        : {}),
+    };
+    this.creditPurchases.set(customerId, [
+      ...(this.creditPurchases.get(customerId) ?? []),
+      purchase,
+    ]);
+    if (checkout.monthly) {
+      this.subscriptions.push({
+        customerId,
+        created: Math.floor(this.now() / 1000) + this.sequence,
+        subscriptionId: `sub_credit_${this.sequence}`,
+        subscriptionItemId: `si_credit_${this.sequence}`,
+        priceId: "price_credit_emulated",
+        status: "active",
+        seats: 1,
+        creditAmountCents: checkout.amountCents,
+        trialEndsAt: null,
+        currentPeriodEndsAt: new Date(this.now() + 30 * 86400000),
+        cancelAtPeriodEnd: false,
+        endedAt: null,
+      });
+    }
+    return purchase;
   }
 
   async createPortal(input: { customerId: string; returnUrl: string }) {
@@ -72,26 +197,21 @@ export class BillingEmulator implements BillingProvider {
   }
 
   async getCustomerSubscription(customerId: string) {
+    this.renewCredits(customerId);
     const chosen = pickBillingSubscription(this.forCustomer(customerId));
     if (!chosen) return null;
     const { customerId: _customer, created: _created, ...snapshot } = chosen;
     return { ...snapshot };
   }
 
-  async updateSeats(subscriptionItemId: string, seats: number) {
-    const subscription = this.subscriptions.find(
-      (s) => s.subscriptionItemId === subscriptionItemId,
-    );
-    if (!subscription) throw new Error(`Unknown subscription item ${subscriptionItemId}`);
-    subscription.seats = seats;
+  async updateSeats(customerId: string, seats: number) {
+    const chosen = pickBillingSubscription(this.forCustomer(customerId));
+    if (chosen && chosen.priceId !== BYOK_PRICE_ID && holdsBillingSubscription(chosen.status))
+      chosen.seats = seats;
   }
 
   async cancelCustomerSubscriptions(customerId: string) {
-    for (const subscription of this.forCustomer(customerId)) {
-      if (subscription.status === "canceled") continue;
-      subscription.status = "canceled";
-      subscription.endedAt = new Date(this.now());
-    }
+    this.cancelAll(customerId);
   }
 
   parseWebhook(rawBody: string, headers: Headers) {
@@ -128,6 +248,13 @@ export class BillingEmulator implements BillingProvider {
     newest.status = status;
   }
 
+  /** Test helper: deleting the customer cancels its subscriptions and blocks further calls. */
+  deleteCustomer(customerId: string) {
+    this.requireCustomer(customerId);
+    this.cancelAll(customerId);
+    this.customers.delete(customerId);
+  }
+
   /** Test helper: a webhook request this emulator's `parseWebhook` accepts. */
   signWebhook(event: object, timestamp = Math.floor(this.now() / 1000)) {
     const body = JSON.stringify(event);
@@ -138,11 +265,47 @@ export class BillingEmulator implements BillingProvider {
     return { body, headers };
   }
 
+  /** An open checkout goes too, so it cannot start a subscription afterwards. */
+  private cancelAll(customerId: string) {
+    this.checkouts.delete(customerId);
+    for (const subscription of this.forCustomer(customerId)) {
+      if (subscription.status === "canceled") continue;
+      subscription.status = "canceled";
+      subscription.endedAt = new Date(this.now());
+    }
+  }
+
+  private renewCredits(customerId: string) {
+    for (const subscription of this.forCustomer(customerId)) {
+      if (!subscription.creditAmountCents || subscription.status !== "active") continue;
+      while (
+        subscription.currentPeriodEndsAt &&
+        subscription.currentPeriodEndsAt.getTime() <= this.now()
+      ) {
+        if (subscription.cancelAtPeriodEnd) {
+          subscription.status = "canceled";
+          subscription.endedAt = subscription.currentPeriodEndsAt;
+          break;
+        }
+        subscription.currentPeriodEndsAt = new Date(
+          subscription.currentPeriodEndsAt.getTime() + 30 * 86400000,
+        );
+        const purchases = this.creditPurchases.get(customerId) ?? [];
+        purchases.push({
+          id: `renewal_${this.namespace}_${++this.sequence}`,
+          amountCents: subscription.creditAmountCents,
+          expiresAt: subscription.currentPeriodEndsAt.toISOString(),
+        });
+        this.creditPurchases.set(customerId, purchases);
+      }
+    }
+  }
+
   private forCustomer(customerId: string) {
     return this.subscriptions.filter((s) => s.customerId === customerId);
   }
 
   private requireCustomer(customerId: string) {
-    if (!this.customers.has(customerId)) throw new Error(`Unknown customer ${customerId}`);
+    if (!this.customers.has(customerId)) throw new BillingCustomerNotFoundError();
   }
 }

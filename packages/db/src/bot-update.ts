@@ -1,3 +1,4 @@
+import { displayName } from "@rakazo/core";
 import { getLogger } from "@rakazo/logging";
 import { writeBotInstructions } from "./bot-instructions.js";
 import type { Prisma, PrismaClient } from "./client.js";
@@ -6,8 +7,8 @@ import { appendEventInTransaction } from "./events.js";
 type AppendEvent = typeof appendEventInTransaction;
 
 /**
- * Persist a bot row. When profile labels or instructions change, write `bot.updated`
- * in the same transaction so clients can refresh after every successful write.
+ * When profile labels or instructions change, write `bot.updated` in the same
+ * transaction so clients can refresh after every successful write.
  * Realtime notify stays best-effort after commit.
  */
 export async function commitBotUpdate(
@@ -30,6 +31,12 @@ export async function commitBotUpdate(
   },
   appendEvent: AppendEvent = appendEventInTransaction,
 ): Promise<{ id: string; name: string; title: string; description: string }> {
+  if (typeof options.data.name === "string") {
+    options = {
+      ...options,
+      data: { ...options.data, name: displayName(options.data.name, "") },
+    };
+  }
   if (
     !options.emitBotUpdated &&
     options.data.instructions === undefined &&
@@ -86,11 +93,13 @@ export function botProfileLabelsChanged(input: {
   title?: unknown;
   description?: unknown;
   color?: unknown;
+  avatarSet?: unknown;
 }): boolean {
   return (
     input.name !== undefined ||
     input.title !== undefined ||
     input.description !== undefined ||
-    input.color !== undefined
+    input.color !== undefined ||
+    input.avatarSet !== undefined
   );
 }

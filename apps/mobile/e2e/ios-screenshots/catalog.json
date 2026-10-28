@@ -20,6 +20,11 @@
     "flow": "flows/thread.yaml"
   },
   {
+    "id": "thread-errors",
+    "title": "Thread error recovery",
+    "flow": "flows/thread-errors.yaml"
+  },
+  {
     "id": "search",
     "title": "Search",
     "flow": "flows/search.yaml"
@@ -28,6 +33,11 @@
     "id": "compose",
     "title": "Compose",
     "flow": "flows/compose.yaml"
+  },
+  {
+    "id": "split-view",
+    "title": "Split view",
+    "flow": "flows/split-view.yaml"
   },
   {
     "id": "settings",

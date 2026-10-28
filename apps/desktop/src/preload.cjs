@@ -2,9 +2,25 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("rakazoDesktop", {
   platform: process.platform,
-  localSettings: {
-    request: (pathname, body) =>
-      ipcRenderer.invoke("desktop.localSettings.request", pathname, body),
+  badge: {
+    set: (count) => ipcRenderer.invoke("desktop.badge.set", count),
+  },
+  computer: {
+    managesHostChoice: true,
+    requestAccess: () => ipcRenderer.invoke("desktop.computer.requestAccess"),
+    revokeAccess: () => ipcRenderer.invoke("desktop.computer.revokeAccess"),
+    onConfigure: (listener) => {
+      const handler = () => listener();
+      ipcRenderer.on("desktop.computer.configure", handler);
+      return () => ipcRenderer.off("desktop.computer.configure", handler);
+    },
+  },
+  device: {
+    state: () => ipcRenderer.invoke("desktop.device.state"),
+    setAllowed: (allowed) => ipcRenderer.invoke("desktop.device.setAllowed", allowed),
+  },
+  passkeys: {
+    rpIds: () => ipcRenderer.invoke("desktop.passkeys.rpIds"),
   },
   window: {
     close: () => ipcRenderer.invoke("desktop.window.close"),

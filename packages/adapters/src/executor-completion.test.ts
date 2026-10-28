@@ -1,26 +1,32 @@
 import { describe, expect, it } from "vitest";
+import { runIdentityInstruction } from "./run-instructions.js";
+import { mayOpenModelStream } from "./run-lifecycle.js";
 import {
   completionMarksUnread,
-  completionMessageSegments,
   completionNotificationBody,
   completionNotificationPreview,
+  runSendsFinishNotification,
+  secretAskNotification,
+  subagentMarksUnread,
+} from "./run-notifications.js";
+import {
+  completionMessageSegments,
   DELEGATED_EMPTY_NOTICE,
   emptyDelegatedToolTurnShouldFail,
-  isExactNoResponse,
   longWorkProgressGuidance,
-  mayOpenModelStream,
-  NO_RESPONSE,
   REACTION_SILENT_REPLY_GUIDANCE,
   ROUTINE_SILENT_REPLY_GUIDANCE,
   runAllowsSilentEmpty,
-  runIdentityInstruction,
   runPromotesMidTurnNarration,
   runReplyGuidance,
-  runSendsFinishNotification,
-  stripNoResponseReply,
-  subagentMarksUnread,
   TICKET_SILENT_REPLY_GUIDANCE,
-} from "./executor.js";
+} from "./run-replies.js";
+import {
+  isExactNoResponse,
+  NO_RESPONSE,
+  stripNoResponseReply,
+  stripStrayNoResponse,
+} from "./silent-reply.js";
 import { finalBlocksAfterMidTurnProgress } from "./user-progress.js";
 
 describe("completionMessageSegments", () => {
@@ -124,6 +130,39 @@ describe("completionNotificationPreview", () => {
     expect(preview).not.toContain("*");
     expect(preview.startsWith("word word")).toBe(true);
     expect(completionNotificationPreview("**  **")).toBe("");
+  });
+});
+
+describe("secretAskNotification", () => {
+  it("uses the generic answer title and a short, redacted label", () => {
+    const notification = secretAskNotification(
+      "Bot",
+      `Sign in for fake-token-123 ${"word ".repeat(100)}`,
+      ["fake-token-123"],
+    );
+    expect(notification.title).toBe("Bot needs an answer");
+    expect(notification.body).toHaveLength(180);
+    expect(notification.body.startsWith("Sign in for [redacted] word")).toBe(true);
+  });
+
+  it("redacts a Markdown-split protected value before the notification cut", () => {
+    const body = secretAskNotification("Bot", `${"x".repeat(167)} fake-**token**-123`, [
+      "fake-token-123",
+    ]).body;
+    expect(body).toBe(`${"x".repeat(167)} [redacted]`);
+    expect(body).not.toContain("fake-");
+  });
+
+  it("keeps the body within 180 characters when redaction expands a value", () => {
+    const body = secretAskNotification("Bot", `${"x".repeat(170)} ab**c1**23`, ["abc123"]).body;
+    expect(body).toHaveLength(180);
+    expect(body).not.toContain("abc");
+  });
+
+  it("does not let Markdown split a protected value past redaction", () => {
+    expect(secretAskNotification("Bot", "Code fake-**token**-123", ["fake-token-123"]).body).toBe(
+      "Code [redacted]",
+    );
   });
 });
 
@@ -585,5 +624,30 @@ describe("subagentMarksUnread", () => {
     expect(subagentMarksUnread("bot_message", "completed")).toBe(false);
     expect(subagentMarksUnread("bot_message", "failed")).toBe(true);
     expect(subagentMarksUnread("bot_message", "completed", true)).toBe(true);
+  });
+});
+
+describe("stripStrayNoResponse for runs that must reply", () => {
+  it.each([
+    ["Done.\n\nNO_RESPONSE", "Done."],
+    ["Done.NO_RESPONSENO_RESPONSE", "Done."],
+    ["NO_RESPONSE Done.", "Done."],
+  ])("drops edge sentinels from %j", (text, prose) => {
+    expect(stripStrayNoResponse(text, [{ kind: "text", text }])).toEqual({
+      assembled: prose,
+      blocks: [{ kind: "text", text: prose }],
+    });
+  });
+
+  it.each([
+    [NO_RESPONSE],
+    [`  ${NO_RESPONSE}NO_RESPONSE  `],
+    ["first NO_RESPONSE last"],
+    ["reportNO_RESPONSE"],
+    ["NO_RESPONSE_POLICY is on."],
+    [""],
+  ])("leaves %j unchanged", (text) => {
+    const blocks = text ? [{ kind: "text" as const, text }] : [];
+    expect(stripStrayNoResponse(text, blocks)).toEqual({ assembled: text, blocks });
   });
 });

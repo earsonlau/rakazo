@@ -15,10 +15,10 @@ import {
   registerOpenAiCompatibleRuntime,
 } from "./pi-openai-compatible-provider.js";
 import {
-  reliableModelStream,
   SILENT_ALLOWED_TOOL_CONTINUATION_PROMPT,
   SILENT_TOOL_CONTINUATION_PROMPT,
 } from "./pi-runtime.js";
+import { reliableModelStream } from "./pi-runtime-stream.js";
 import { formatFinishedShellCommand } from "./shell-command-stream.js";
 
 const image = { type: "image_url", image_url: { url: "data:image/png;base64,aGk=" } };
@@ -117,6 +117,7 @@ describe("automated messages are labelled as not from the user", () => {
         modelId: "m",
         baseUrl,
         acceptsImages: true,
+        allowPrivate: true,
       });
       const model = models.getModel(OPENAI_COMPATIBLE_PROVIDER_ID, "m")!;
       const usage = {

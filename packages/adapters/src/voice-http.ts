@@ -1,4 +1,7 @@
 import type { VoiceVerifyResult } from "@rakazo/adapter-kit";
+import { VoiceAccountError } from "@rakazo/adapter-kit";
+import type { VoiceAccountErrorCode } from "@rakazo/contracts";
+import { cancelResponseBody } from "@rakazo/core";
 import { readBodyCapped } from "./web-ssrf.js";
 
 /** A 2,000-character utterance should stay far below this, even at high MP3 bitrates. */
@@ -31,14 +34,6 @@ async function readVoiceBytes(
       throw new Error("Voice response is too large.");
     }
     throw error;
-  }
-}
-
-function cancelResponseBody(res: Response): void {
-  try {
-    void Promise.resolve(res.body?.cancel()).catch(() => undefined);
-  } catch {
-    // Provider response cleanup is best-effort and must not delay the size error.
   }
 }
 
@@ -87,6 +82,14 @@ function detail(body: unknown): string {
   if (!body || typeof body !== "object") return "";
   const record = body as Record<string, unknown>;
   if (typeof record.detail === "string" && record.detail.trim()) return record.detail.trim();
+  // Validation errors (422) list each problem as `{ loc, msg, type }`.
+  if (Array.isArray(record.detail)) {
+    return record.detail
+      .map((item) => (item && typeof item === "object" ? (item as { msg?: unknown }).msg : item))
+      .filter((msg): msg is string => typeof msg === "string" && !!msg.trim())
+      .map((msg) => msg.trim())
+      .join("; ");
+  }
   if (
     record.detail &&
     typeof record.detail === "object" &&
@@ -106,6 +109,14 @@ function detail(body: unknown): string {
   return "";
 }
 
+/** ElevenLabs' machine-readable `detail.status`, such as `invalid_api_key` or `quota_exceeded`. */
+function reasonCode(body: unknown): string | undefined {
+  const value = (body as { detail?: { status?: unknown } } | null)?.detail;
+  return value && typeof value === "object" && typeof value.status === "string"
+    ? value.status
+    : undefined;
+}
+
 export function voiceUnreachable(provider: string): string {
   return `Couldn't reach ${provider} to check that key. Check your connection.`;
 }
@@ -118,7 +129,13 @@ export function voiceHttpError(
 ): string {
   const theirs = detail(body);
   if (status === 401 || status === 403) {
-    return `${provider} rejected that key. Check the key and that it has speech permissions.`;
+    // ElevenLabs also answers 401 for spent quota and missing key permissions.
+    const reason = reasonCode(body);
+    if (reason === "missing_permissions")
+      return theirs || `That ${provider} key is missing a permission this needs.`;
+    if (!reason || reason === "invalid_api_key" || !theirs)
+      return `${provider} rejected that key. Check the key and that it has speech permissions.`;
+    return theirs;
   }
   if (status === 429)
     return theirs || `${provider} is rate-limiting this account. Wait a moment and try again.`;
@@ -126,9 +143,57 @@ export function voiceHttpError(
   return theirs ? `${what} failed: ${theirs}` : `${what} failed (${status})`;
 }
 
+/** OpenAI's machine-readable `error.code` or `error.type`, such as `insufficient_quota`. */
+function openAiErrorCode(body: unknown): string | undefined {
+  const error = (body as { error?: unknown } | null)?.error;
+  if (!error || typeof error !== "object") return undefined;
+  const { code, type } = error as { code?: unknown; type?: unknown };
+  if (typeof code === "string") return code;
+  return typeof type === "string" ? type : undefined;
+}
+
+/** OpenAI also answers 429 for billing with other codes; only the message tells them apart. */
+const BILLING_MESSAGE =
+  /\bcredits?\b|billing|exceeded your current quota|paid subscription|account is not active/i;
+
+/**
+ * A failure the user fixes in their provider account. 402 is spent credit (Fish Audio,
+ * Cartesia), OpenAI sends 429 `insufficient_quota` or a billing message, and ElevenLabs
+ * sends 401 `quota_exceeded`. Other 401s and 403s are a rejected key.
+ */
+export function voiceAccountIssue(
+  status: number,
+  body: unknown,
+): VoiceAccountErrorCode | undefined {
+  if (status === 402) return "VOICE_OUT_OF_CREDIT";
+  if (status === 429) {
+    return openAiErrorCode(body) === "insufficient_quota" || BILLING_MESSAGE.test(detail(body))
+      ? "VOICE_OUT_OF_CREDIT"
+      : undefined;
+  }
+  if (status !== 401 && status !== 403) return undefined;
+  const reason = reasonCode(body);
+  if (reason === "quota_exceeded") return "VOICE_OUT_OF_CREDIT";
+  return !reason || reason === "invalid_api_key" ? "VOICE_KEY_REJECTED" : undefined;
+}
+
+/** The error a failed provider request throws; account issues carry their code. */
+export function voiceRequestError(
+  status: number,
+  provider: string,
+  what: string,
+  body: unknown,
+  /** The provider's original body, when `body` was trimmed for display. */
+  rawBody: unknown = body,
+): Error {
+  const message = voiceHttpError(status, provider, what, body);
+  const code = voiceAccountIssue(status, rawBody);
+  return code ? new VoiceAccountError(code, message) : new Error(message);
+}
+
 export async function requireOk(res: Response, provider: string, what: string): Promise<Response> {
   if (res.ok) return res;
-  throw new Error(voiceHttpError(statusFor(res), provider, what, await readVoiceJson(res)));
+  throw voiceRequestError(res.status, provider, what, await readVoiceJson(res));
 }
 
 export async function verifyVoiceHttpGet(options: {
@@ -158,8 +223,4 @@ export async function verifyVoiceHttpGet(options: {
       message: voiceUnreachable(options.provider),
     };
   }
-}
-
-function statusFor(res: Response) {
-  return res.status;
 }

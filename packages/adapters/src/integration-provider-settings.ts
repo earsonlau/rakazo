@@ -4,12 +4,8 @@ import type {
   ManagedConnectorProvider,
   SecretStore,
 } from "@rakazo/adapter-kit";
-import {
-  type IntegrationProviderConfig,
-  IntegrationProviderConfigSchema,
-  type IntegrationProviderId,
-  IntegrationProviderIdSchema,
-} from "@rakazo/contracts";
+import type { IntegrationProviderConfig, IntegrationProviderId } from "@rakazo/contracts";
+import { IntegrationProviderConfigSchema, IntegrationProviderIdSchema } from "@rakazo/contracts";
 import type { PrismaClient } from "@rakazo/db";
 import { ComposioConnector } from "./composio-connector.js";
 import { credentialDigest } from "./credential-digest.js";
@@ -40,7 +36,7 @@ export class IntegrationProviderSettings {
   private create(config: IntegrationProviderConfig): ManagedConnectorProvider {
     if (this.factory) return this.factory(config);
     return config.provider === "composio"
-      ? new ComposioConnector(config.apiKey)
+      ? new ComposioConnector({ apiKey: config.apiKey })
       : new PipedreamConnector({ ...config, identitySecret: this.identitySecret });
   }
 
@@ -174,6 +170,9 @@ class ConfiguredIntegrationProvider implements ManagedConnectorProvider {
   async listConnectedExternalIds(context: AdapterContext) {
     return (await this.resolve())?.listConnectedExternalIds(context) ?? [];
   }
+  async listReconnectRefs(context: AdapterContext) {
+    return (await (await this.resolve())?.listReconnectRefs?.(context)) ?? [];
+  }
   async connectionReady(context: AdapterContext, externalId: string) {
     return (await this.required()).connectionReady(context, externalId);
   }
@@ -190,7 +189,8 @@ class ConfiguredIntegrationProvider implements ManagedConnectorProvider {
     return (await this.required()).revoke(ref, context);
   }
   async resolveCall(call: ConnectorCall, context: AdapterContext) {
-    return (await this.required()).resolveCall?.(call, context);
+    const provider = await (call.route ? this.required() : this.resolve());
+    return provider?.resolveCall?.(call, context);
   }
   async *execute(call: ConnectorCall, context: AdapterContext) {
     yield* (await this.required()).execute(call, context);

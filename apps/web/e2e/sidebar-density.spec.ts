@@ -22,7 +22,7 @@ test("compact bot sidebar hides previews and preserves roster status accessibly"
   const selectedBotId = activeBotId(page);
   const previewBot = await rpc<{ id: string }>(page, "bots/create", {
     name: "Compact Sample",
-    title: "Field notes",
+    title: "Field notes from every venue we scouted downtown",
     description: "",
     instructions: "",
     notifyOnFinish: true,
@@ -42,9 +42,50 @@ test("compact bot sidebar hides previews and preserves roster status accessibly"
   await expect(previewRow).toContainText(preview);
   await expect(previewRow).toContainText("Field notes");
   await expect(previewRow.locator("[data-roster-bot-name]")).toHaveText("Compact Sample");
-  await expect(previewRow.locator("[data-roster-preview]")).toHaveClass(/line-clamp-2/);
+  // The label sits beside the name on its line, and only the label gives way to a long value.
+  const rosterName = previewRow.locator("[data-roster-bot-name]");
+  const rosterTitle = previewRow.locator("[data-roster-bot-title]");
+  const nameBox = await rosterName.boundingBox();
+  const titleBox = await rosterTitle.boundingBox();
+  expect(titleBox?.height).toBeLessThanOrEqual(nameBox?.height ?? 0);
+  expect(Math.abs((titleBox?.y ?? 0) - (nameBox?.y ?? 0))).toBeLessThanOrEqual(1);
+  expect(await rosterName.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true,
+  );
+  expect(await rosterTitle.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+    true,
+  );
+  await page.mouse.move(1, 1);
+  await captureScreenshot(page, testInfo, "sidebar-density-comfortable-title");
+  // Previews stay on one line and end in an ellipsis instead of wrapping.
+  await expect(previewRow.locator("[data-roster-preview]")).toHaveCSS("white-space", "nowrap");
+  await expect(previewRow.locator("[data-roster-preview]")).toHaveCSS("text-overflow", "ellipsis");
   await expect(previewRow).toHaveAttribute("data-roster-unread", "true");
   await expect(previewRow).toHaveAccessibleName(/Compact Sample.*unread/i);
+  // The unread dot is the one blue in the sidebar, not ink.
+  await expect(previewRow.locator("[data-roster-unread-dot]")).toHaveCSS(
+    "background-color",
+    "rgb(11, 109, 211)",
+  );
+  // Times are tertiary text; a hovered row takes the light hover fill, lighter than selection.
+  await expect(previewRow.locator("[data-roster-time]")).toHaveCSS(
+    "color",
+    "rgba(28, 28, 28, 0.56)",
+  );
+  await previewRow.hover();
+  await expect(previewRow).toHaveCSS("background-color", "rgba(28, 28, 28, 0.06)");
+  await expect(selectedRow).toHaveCSS("background-color", "rgba(28, 28, 28, 0.08)");
+  // Once read, the preview is secondary text.
+  await rpc(page, "threads/markRead", { botId: previewBot.id });
+  await page.reload();
+  await expect(previewRow).not.toHaveAttribute("data-roster-unread", "true");
+  await expect(previewRow.locator("[data-roster-preview]")).toHaveCSS(
+    "color",
+    "rgba(28, 28, 28, 0.68)",
+  );
+  await rpc(page, "threads/markUnread", { botId: previewBot.id });
+  await page.reload();
+  await expect(previewRow).toHaveAttribute("data-roster-unread", "true");
   await previewRow.scrollIntoViewIfNeeded();
   const comfortableHeight = await previewRow.evaluate(
     (element) => element.getBoundingClientRect().height,
@@ -92,7 +133,10 @@ test("compact bot sidebar hides previews and preserves roster status accessibly"
     await expect(previewRow.locator('[data-roster-status="running"]')).toHaveText("Working…", {
       timeout: 30_000,
     });
-    await expect(previewRow.locator('[data-working="true"]')).toBeVisible();
+    await expect(previewRow.locator(".rakazo-logo-avatar")).not.toHaveAttribute(
+      "data-activity",
+      "idle",
+    );
     await expect(previewRow.locator('[data-roster-status="running"]')).toHaveClass(
       /text-status-working/,
     );

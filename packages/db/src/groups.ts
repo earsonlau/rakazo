@@ -1,17 +1,20 @@
-import {
-  type Actor,
-  GROUP_MEMBER_MAX,
-  GROUP_MEMBER_MIN,
-  type Group,
-  type GroupMember,
-  type SpaceGroup,
-} from "@rakazo/contracts";
+import type { Actor, Group, GroupMember, SpaceGroup } from "@rakazo/contracts";
+import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, resolveBotAvatarSet } from "@rakazo/contracts";
+import { displayName } from "@rakazo/core";
 import { cancelRunsInTransaction } from "./cancel-runs.js";
 import type { Prisma, PrismaClient } from "./client.js";
-import { expireComputerExecutionLeases } from "./computers.js";
+import { expireComputerExecutionLeases, restoreBotUnderComputerQuota } from "./computers.js";
+import { transientRunEventsWhere } from "./events.js";
+import { withNewestThreadMessages } from "./preview-messages.js";
 import { IsolationError } from "./scope.js";
 import { lockSpaceForContentCreation } from "./spaces.js";
-import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thread-listing.js";
+import {
+  activeRunSelection,
+  activeRunStatuses,
+  previewFromBlocks,
+  primaryActiveRun,
+} from "./thread-listing.js";
+import { withTransactionRetry } from "./transaction-retry.js";
 
 type GroupRecord = {
   id: string;
@@ -33,6 +36,7 @@ type GroupRecord = {
       id: string;
       name: string;
       color: string;
+      avatarSet?: string;
       runs: Array<{ status: string }>;
     };
   }>;
@@ -53,7 +57,8 @@ function mapGroupMembers(members: GroupRecord["members"]): GroupMember[] {
     botId: member.bot.id,
     name: member.bot.name,
     color: member.bot.color,
-    status: member.bot.runs[0]?.status ?? "idle",
+    avatarSet: resolveBotAvatarSet(member.bot.avatarSet),
+    status: primaryActiveRun(member.bot.runs)?.status ?? "idle",
   }));
 }
 
@@ -113,14 +118,19 @@ async function assertOwnedBots(
       userId: actor.userId,
       archivedAt: null,
     },
-    select: { id: true, name: true, color: true },
+    select: { id: true, name: true, color: true, avatarSet: true },
   });
   if (bots.length !== unique.length) throw new IsolationError();
   const botsById = new Map(bots.map((bot) => [bot.id, bot]));
   return unique.map((botId) => {
     const bot = botsById.get(botId);
     if (!bot) throw new IsolationError();
-    return { botId: bot.id, name: bot.name, color: bot.color };
+    return {
+      botId: bot.id,
+      name: bot.name,
+      color: bot.color,
+      avatarSet: resolveBotAvatarSet(bot.avatarSet),
+    };
   });
 }
 
@@ -141,11 +151,7 @@ function memberRowsInOrder(groupId: string, botIds: string[], base = Date.now())
 const groupMemberOrder = [{ createdAt: "asc" as const }, { botId: "asc" as const }];
 
 const groupInclude = {
-  thread: {
-    include: {
-      messages: { orderBy: { seq: "desc" as const }, take: 1 },
-    },
-  },
+  thread: true,
   members: {
     where: { bot: { archivedAt: null } },
     include: {
@@ -154,9 +160,21 @@ const groupInclude = {
           id: true,
           name: true,
           color: true,
+          avatarSet: true,
           runs: activeRunSelection,
         },
       },
+    },
+    orderBy: groupMemberOrder,
+  },
+} as const;
+
+// Every member, archived bots included, so a group that can't be opened still names its bots.
+const archivedGroupInclude = {
+  thread: groupInclude.thread,
+  members: {
+    include: {
+      bot: { select: { ...groupInclude.members.include.bot.select, archivedAt: true } },
     },
     orderBy: groupMemberOrder,
   },
@@ -172,6 +190,7 @@ const groupTargetInclude = {
           id: true,
           name: true,
           color: true,
+          avatarSet: true,
           runs: activeRunSelection,
         },
       },
@@ -259,52 +278,104 @@ async function resumeArchivedGroupTeardown(tx: Prisma.TransactionClient, threadI
   return { cancelledRunIds: leasedRunIds, computers: targets };
 }
 
+/**
+ * Newest message for one group's preview. A top-level `take` is sent as LIMIT;
+ * the content-encryption extension decrypts the row, so this read has no `select`.
+ */
+async function attachNewestGroupMessage<T extends { thread: { id: string } | null }>(
+  client: PrismaClient | Prisma.TransactionClient,
+  group: T,
+) {
+  if (!group.thread) return group;
+  const messages = await client.message.findMany({
+    where: { threadId: group.thread.id },
+    orderBy: { seq: "desc" },
+    take: 1,
+  });
+  return { ...group, thread: { ...group.thread, messages } };
+}
+
 export function createGroupRepos(prisma: PrismaClient) {
   async function listSpaceGroupsForSpaces(actor: Actor, spaceIds: string[]): Promise<SpaceGroup[]> {
     if (spaceIds.length === 0) return [];
-    const groups = await prisma.chatGroup.findMany({
-      where: {
-        spaceId: { in: spaceIds },
-        userId: actor.userId,
-        archivedAt: null,
-      },
-      select: {
-        id: true,
-        spaceId: true,
-        name: true,
-        pinned: true,
-        sectionId: true,
-        updatedAt: true,
-        thread: {
-          select: {
-            unread: true,
-            messages: {
-              orderBy: { seq: "desc" },
-              take: 1,
-              select: { blocks: true },
+    const groups = await withNewestThreadMessages(
+      prisma,
+      await prisma.chatGroup.findMany({
+        where: {
+          spaceId: { in: spaceIds },
+          userId: actor.userId,
+          archivedAt: null,
+        },
+        select: {
+          id: true,
+          spaceId: true,
+          name: true,
+          pinned: true,
+          sectionId: true,
+          updatedAt: true,
+          thread: {
+            select: {
+              id: true,
+              unread: true,
             },
           },
+          members: groupInclude.members,
         },
-        members: groupInclude.members,
-      },
-      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-    });
+        orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+      }),
+      1,
+    );
     return groups
       .filter((group) => hasMinimumActiveMembers(group.members))
       .map((group) => mapSpaceGroup(group));
   }
 
-  return {
-    async listGroups(actor: Actor, options: { archived?: boolean } = {}): Promise<Group[]> {
-      const groups = await prisma.chatGroup.findMany({
+  /**
+   * Archived groups, and groups left with too few active bots to open, whatever their member
+   * count: this is the only list they appear in, so it's where they're restored.
+   */
+  async function listArchivedGroups(actor: Actor): Promise<Group[]> {
+    const groups = await withNewestThreadMessages(
+      prisma,
+      await prisma.chatGroup.findMany({
         where: {
           spaceId: actor.spaceId,
           userId: actor.userId,
-          archivedAt: options.archived ? { not: null } : null,
+          OR: [
+            { archivedAt: { not: null } },
+            { members: { some: { bot: { archivedAt: { not: null } } } } },
+          ],
         },
-        include: groupInclude,
+        include: archivedGroupInclude,
         orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-      });
+      }),
+      1,
+    );
+    return groups
+      .filter(
+        (group) =>
+          group.archivedAt !== null ||
+          !hasMinimumActiveMembers(group.members.filter((member) => !member.bot.archivedAt)),
+      )
+      .map((group) => mapGroup(group as GroupRecord));
+  }
+
+  return {
+    async listGroups(actor: Actor, options: { archived?: boolean } = {}): Promise<Group[]> {
+      if (options.archived) return listArchivedGroups(actor);
+      const groups = await withNewestThreadMessages(
+        prisma,
+        await prisma.chatGroup.findMany({
+          where: {
+            spaceId: actor.spaceId,
+            userId: actor.userId,
+            archivedAt: null,
+          },
+          include: groupInclude,
+          orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+        }),
+        1,
+      );
       return groups
         .filter((group) => hasMinimumActiveMembers(group.members))
         .map((group) => mapGroup(group as GroupRecord));
@@ -323,7 +394,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         include: groupInclude,
       });
       if (!group || !hasMinimumActiveMembers(group.members)) throw new IsolationError();
-      return group as GroupRecord;
+      return (await attachNewestGroupMessage(prisma, group)) as GroupRecord;
     },
 
     async getGroupTarget(actor: Actor, groupId: string) {
@@ -351,7 +422,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           data: {
             spaceId: actor.spaceId,
             userId: actor.userId,
-            name: input.name.trim(),
+            name: displayName(input.name, ""),
           },
         });
         await tx.chatGroupMember.createMany({
@@ -367,10 +438,11 @@ export function createGroupRepos(prisma: PrismaClient) {
             userId: actor.userId,
           },
         });
-        return tx.chatGroup.findFirstOrThrow({
+        const loaded = await tx.chatGroup.findFirstOrThrow({
           where: { id: group.id },
           include: groupInclude,
         });
+        return attachNewestGroupMessage(tx, loaded);
       });
       return mapGroup(created as GroupRecord);
     },
@@ -435,7 +507,7 @@ export function createGroupRepos(prisma: PrismaClient) {
                   in: ["queued", "leased", "running", "waiting_input", "waiting_takeover"],
                 },
               },
-              select: { id: true, taskId: true },
+              select: { id: true, taskId: true, userId: true, spaceId: true },
             })
           : [];
         if (activeRuns.length) {
@@ -445,7 +517,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         if (input.name !== undefined) {
           await tx.chatGroup.update({
             where: { id: input.groupId },
-            data: { name: input.name.trim() },
+            data: { name: displayName(input.name, "") },
           });
         }
         if (members) {
@@ -465,12 +537,14 @@ export function createGroupRepos(prisma: PrismaClient) {
             sectionId: input.sectionId,
           },
         });
-        return tx.chatGroup
-          .findFirstOrThrow({
-            where: { id: input.groupId },
-            include: groupInclude,
-          })
-          .then((group) => ({ group, cancelledRunIds: activeRuns.map((run) => run.id) }));
+        const loaded = await tx.chatGroup.findFirstOrThrow({
+          where: { id: input.groupId },
+          include: groupInclude,
+        });
+        return {
+          group: await attachNewestGroupMessage(tx, loaded),
+          cancelledRunIds: activeRuns.map((run) => run.id),
+        };
       });
       if (!updated.group.thread) throw new IsolationError();
       return {
@@ -498,7 +572,7 @@ export function createGroupRepos(prisma: PrismaClient) {
             threadId: current.thread.id,
             status: { in: activeRunStatuses },
           },
-          select: { id: true, taskId: true },
+          select: { id: true, taskId: true, userId: true, spaceId: true },
         });
         const runIds = activeRuns.map((run) => run.id);
         const now = new Date();
@@ -509,7 +583,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         if (runIds.length) {
           await cancelRunsInTransaction(tx, activeRuns, now);
           await tx.event.deleteMany({
-            where: { type: "thread.progress", runId: { in: runIds } },
+            where: { ...transientRunEventsWhere(), runId: { in: runIds } },
           });
         }
 
@@ -536,12 +610,33 @@ export function createGroupRepos(prisma: PrismaClient) {
       });
     },
 
+    /**
+     * A group needs its bots to open, so its archived bots come back with it, each within its
+     * computer's quota and all in one transaction: one that doesn't fit leaves everything archived.
+     */
     async restoreGroup(actor: Actor, groupId: string) {
-      const restored = await prisma.chatGroup.updateMany({
-        where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
-        data: { archivedAt: null },
-      });
-      if (restored.count !== 1) throw new IsolationError();
+      await withTransactionRetry(() =>
+        prisma.$transaction(async (tx) => {
+          await lockOwnedGroup(tx, actor, groupId);
+          const archived = await tx.chatGroupMember.findMany({
+            where: { groupId, bot: { archivedAt: { not: null } } },
+            select: { bot: { select: { id: true, computerId: true } } },
+            orderBy: groupMemberOrder,
+          });
+          for (const { bot } of archived) {
+            if (bot.computerId) {
+              await restoreBotUnderComputerQuota(tx, {
+                userId: actor.userId,
+                botId: bot.id,
+                computerId: bot.computerId,
+              });
+            } else {
+              await tx.bot.update({ where: { id: bot.id }, data: { archivedAt: null } });
+            }
+          }
+          await tx.chatGroup.update({ where: { id: groupId }, data: { archivedAt: null } });
+        }),
+      );
     },
 
     async removeGroup(actor: Actor, groupId: string) {

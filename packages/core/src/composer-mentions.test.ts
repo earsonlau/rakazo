@@ -5,6 +5,7 @@ import {
   buildComposerMentionOptions,
   connectorIntentLine,
   mentionChipKey,
+  mentionConnectorsFrom,
   partitionComposerMentions,
   resolveComposerSendPlan,
   routineScheduleSubtitle,
@@ -242,5 +243,41 @@ describe("strip and connector intent", () => {
   it("formats routine subtitles", () => {
     expect(routineScheduleSubtitle(["0 9 * * 1-5"])).toMatch(/Weekdays/i);
     expect(routineScheduleSubtitle(["0 9 * * 1-5"], "Chief")).toContain("Chief");
+  });
+});
+
+it("searches the readable fallback when a mention name is opaque", () => {
+  expect(
+    buildComposerMentionOptions({
+      query: "bot",
+      bots: [{ id: "bot-1", name: "__TestTok1__" }],
+      groups: [],
+      routines: [],
+      connectors: [],
+    }),
+  ).toEqual([{ kind: "bot", id: "bot-1", name: "Bot", subtitle: "Bot", color: undefined }]);
+});
+
+describe("mentionConnectorsFrom", () => {
+  it("lists connected apps, then catalog apps not yet covered by a connection", () => {
+    const catalogItem = { connected: false, noAuth: false };
+    expect(
+      mentionConnectorsFrom(
+        [
+          { id: "c1", displayName: "Gmail", provider: "gmail", status: "connected" },
+          { id: "c2", displayName: "Notion", provider: "notion", status: "revoked" },
+        ],
+        [
+          { ...catalogItem, connectorId: "k", slug: "GMAIL", name: "Google Mail" },
+          { ...catalogItem, connectorId: "k", slug: "gmail-work", name: "gmail" },
+          { ...catalogItem, connectorId: "k", slug: "notion", name: "Notion" },
+          { ...catalogItem, connectorId: "k", slug: "slack", name: "Slack", connected: true },
+          { ...catalogItem, connectorId: "k", slug: "weather", name: "Weather", noAuth: true },
+        ],
+      ),
+    ).toEqual([
+      { id: "c1", name: "Gmail", authStatus: "connected", connectionId: "c1" },
+      { id: "catalog:k:notion", name: "Notion", authStatus: "needs_auth" },
+    ]);
   });
 });
