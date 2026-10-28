@@ -1,6 +1,8 @@
 import type {
   AdapterContext,
   AdapterDescriptor,
+  HttpPaymentAuthorization,
+  HttpPaymentChallenge,
   PaymentBillingAddress,
   PaymentCardSecret,
   PaymentWalletCapabilities,
@@ -8,12 +10,19 @@ import type {
   PaymentWalletConnectStart,
   PaymentWalletCredential,
   PaymentWalletProvider,
+  PurchaseCredentialKind,
   PurchaseRequest,
   PurchaseSnapshot,
   PurchaseStatus,
 } from "@rakazo/adapter-kit";
 import { PaymentWalletDisconnected, PaymentWalletRequestRejected } from "@rakazo/adapter-kit";
+import { abortableDelay } from "@rakazo/core";
 import Link, { getDuplicateSpendRequest, LinkApiError } from "@stripe/link-sdk";
+import {
+  readStripeChargeChallenge,
+  stripeChargeAuthorization,
+  stripeChargeTerms,
+} from "./mpp-stripe.js";
 
 /** Link's public device-flow client, the one `@stripe/link-cli` signs in with. */
 export const LINK_PUBLIC_CLIENT_ID = "lwlpk_U7Qy7ThG69STZk";
@@ -61,7 +70,25 @@ interface SpendRequest {
   status_details?: {
     requires_action?: { next_action: { resolution: string; action_url: string | null } };
   } | null;
+  credential_type?: string;
+  link_pay_token?: string;
+  shared_payment_token?: { id: string } | null;
 }
+
+const CREDENTIAL_TYPES = {
+  card: "card",
+  pay_token: "link_pay_token",
+  http_payment: "shared_payment_token",
+} as const satisfies Record<PurchaseCredentialKind, string>;
+
+function matchesType(request: SpendRequest, kind: PurchaseCredentialKind) {
+  return (
+    request.credential_type === undefined || request.credential_type === CREDENTIAL_TYPES[kind]
+  );
+}
+
+/** Link can take a moment after approval to issue the token, as `link-cli mpp pay` allows for. */
+const SHARED_TOKEN_RETRY_MS = [0, 1000, 1000, 2000, 2000];
 
 interface SpendRequests {
   create(params: Record<string, unknown>): Promise<SpendRequest>;
@@ -94,7 +121,7 @@ export class LinkWalletProvider implements PaymentWalletProvider {
       id: "link",
       contractVersion: "1",
       adapterVersion: "0.1.0",
-      capabilities: { offline: false },
+      capabilities: { offline: false, credentials: ["card", "pay_token", "http_payment"] },
     };
   }
 
@@ -196,14 +223,21 @@ export class LinkWalletProvider implements PaymentWalletProvider {
     request: PurchaseRequest,
     context: AdapterContext,
   ): Promise<PurchaseSnapshot> {
+    const target = request.credential;
+    // Link rejects a merchant name or URL on token requests: the account or network names the seller.
+    const merchant =
+      target.kind === "card"
+        ? { merchant_name: target.merchantName, merchant_url: target.merchantUrl }
+        : target.kind === "pay_token"
+          ? { merchant_account_id: target.merchantAccountId }
+          : { network_id: await this.chargeNetwork(target.challenge, request) };
     const link = this.client(credential, context);
     try {
       const created = await link.spendRequests.create({
-        credential_type: "card",
+        credential_type: CREDENTIAL_TYPES[target.kind],
+        ...merchant,
         amount: request.amount,
         currency: request.currency,
-        merchant_name: request.merchantName,
-        merchant_url: request.merchantUrl,
         context: request.reason,
         request_approval: true,
         idempotency_key: request.idempotencyKey,
@@ -238,10 +272,65 @@ export class LinkWalletProvider implements PaymentWalletProvider {
       : { number: request.card.number };
   }
 
+  async revealPayToken(
+    credential: PaymentWalletCredential,
+    id: string,
+    context: AdapterContext,
+  ): Promise<string> {
+    const request = await this.retrieve(credential, id, context, "link_pay_token");
+    if (
+      request.status !== "approved" ||
+      !matchesType(request, "pay_token") ||
+      !request.link_pay_token
+    ) {
+      throw new PaymentWalletRequestRejected("The purchase is not approved.");
+    }
+    return request.link_pay_token;
+  }
+
+  async readHttpPaymentChallenge(wwwAuthenticate: string): Promise<HttpPaymentChallenge | null> {
+    const charge = await readStripeChargeChallenge(wwwAuthenticate);
+    return (
+      charge && { challenge: charge.challenge, amount: charge.amount, currency: charge.currency }
+    );
+  }
+
+  async authorizeHttpPayment(
+    credential: PaymentWalletCredential,
+    id: string,
+    approved: string,
+    wwwAuthenticate: string,
+    context: AdapterContext,
+  ): Promise<HttpPaymentAuthorization> {
+    let request: SpendRequest | undefined;
+    for (const delayMs of SHARED_TOKEN_RETRY_MS) {
+      if (delayMs) await abortableDelay(delayMs, context.signal);
+      request = await this.retrieve(credential, id, context, "shared_payment_token");
+      if (request.status !== "approved" || !matchesType(request, "http_payment"))
+        throw new PaymentWalletRequestRejected("The purchase is not approved.");
+      if (request.shared_payment_token?.id) break;
+    }
+    const token = request?.shared_payment_token?.id;
+    if (!token) throw new Error("Link did not issue the payment token.");
+    return {
+      headers: { authorization: await stripeChargeAuthorization(approved, wwwAuthenticate, token) },
+      secrets: [token],
+    };
+  }
+
+  private async chargeNetwork(challenge: string, request: PurchaseRequest) {
+    const terms = await stripeChargeTerms(challenge);
+    if (terms.amount !== request.amount || terms.currency !== request.currency) {
+      throw new PaymentWalletRequestRejected("The amount must match the payment request.");
+    }
+    return terms.networkId;
+  }
+
   private async retrieve(
     credential: PaymentWalletCredential,
     id: string,
     context: AdapterContext,
+    include: "card" | "link_pay_token" | "shared_payment_token" = "card",
   ): Promise<SpendRequest> {
     // The SDK interpolates the id into the request path.
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) {
@@ -250,7 +339,7 @@ export class LinkWalletProvider implements PaymentWalletProvider {
     const link = this.client(credential, context);
     let request: SpendRequest | null;
     try {
-      request = await link.spendRequests.retrieve(id, { include: ["card"] });
+      request = await link.spendRequests.retrieve(id, { include: [include] });
     } catch (error) {
       throw linkError(error, context);
     }

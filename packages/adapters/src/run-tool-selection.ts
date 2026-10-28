@@ -35,7 +35,7 @@ export const READ_ONLY_AGENT_TOOLS = new Set([
 ]);
 
 /** Offered only to a user who connected a wallet. */
-const PURCHASE_TOOL_NAMES = new Set(["request_purchase", "purchase_status"]);
+const PURCHASE_TOOL_NAMES = new Set(["request_purchase", "purchase_status", "paid_request"]);
 
 export const BUILTIN_AGENT_TOOL_NAMES = new Set(builtinAgentTools.map((tool) => tool.name));
 

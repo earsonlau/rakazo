@@ -1,7 +1,12 @@
 import { ALTERNATIVES, alternativeMarkdown } from "./alternatives";
 import { GROK_ALTERNATIVE_MARKDOWN } from "./grok-alternative";
 import { OPENCLAW_MARKDOWN, SELF_HOST_MARKDOWN } from "./guide";
-import { HOME_MODEL_PROVIDERS, getHomeCopy } from "./i18n/home";
+import {
+  HOME_CHANNELS,
+  HOME_FEATURE_KINDS,
+  HOME_MODEL_PROVIDERS,
+  getHomeCopy,
+} from "./i18n/home";
 import { roundupMarkdown } from "./roundup";
 import { APP_URL } from "./site";
 
@@ -21,6 +26,16 @@ ${home.hero.lead}
 ${home.roster.copy}
 
 ${home.roster.bots.map((bot) => `- **${bot.name}:** ${bot.desc}`).join("\n")}
+
+## ${home.channels.heading}
+
+${home.channels.copy}
+
+${HOME_CHANNELS.map((channel) => `- ${channel.name}${channel.selfHosted ? ` (${home.selfHost.heading})` : ""}`).join("\n")}
+
+## ${home.features.heading}
+
+${HOME_FEATURE_KINDS.map((kind) => `- **${home.features.items[kind].title}:** ${home.features.items[kind].body}`).join("\n")}
 
 ## ${home.testimonials.heading}
 
@@ -62,6 +77,8 @@ ${home.cta.copy}
 - [Self-hosted AI agent](https://rakazo.com/self-hosted-ai-agent/)
 - [OpenClaw comparison](https://rakazo.com/openclaw-alternative/)
 - [Alternatives](https://rakazo.com/alternatives/)
+- [Docs](https://rakazo.com/docs/)
+- [Integrations](https://rakazo.com/integrations/)
 - [Blog](https://rakazo.com/blog/)
 - [Open source Grok Bot alternative](https://rakazo.com/grok-bot-alternative/)
 - [About](https://rakazo.com/about/)
@@ -160,6 +177,8 @@ Rakazo Cloud at https://app.rakazo.com is in beta. Self-hosting is also availabl
 - [Self-hosting Markdown](https://rakazo.com/self-hosted-ai-agent.md): the setup guide with language-tagged code examples.
 - [Full self-hosting reference](https://github.com/elie222/rakazo/blob/main/docs/self-host.md)
 - [OpenClaw comparison](https://rakazo.com/openclaw-alternative/)
+- [Docs](https://rakazo.com/docs/): getting started, using Rakazo, and self-hosting. Each page has a Markdown version.
+- [Integrations](https://rakazo.com/integrations/): every app a bot can connect to. [Markdown list](https://rakazo.com/integrations.md); each app page has a Markdown version with its actions.
 - [Blog](https://rakazo.com/blog/)
 - [Releases](https://github.com/elie222/rakazo/releases)
 - [Support](https://rakazo.com/support/)

@@ -1,8 +1,11 @@
 import type {
   AdapterContext,
   JobPublisher,
+  PaymentWalletCredential,
   PaymentWalletProvider,
   PurchaseCardSummary,
+  PurchaseCredential,
+  PurchaseCredentialKind,
   PurchaseSnapshot,
   PurchaseStatus,
 } from "@rakazo/adapter-kit";
@@ -18,10 +21,12 @@ import { getLogger } from "@rakazo/logging";
 import type { PaymentWalletDeps } from "./payment-wallets.js";
 import { withPaymentWalletCredential } from "./payment-wallets.js";
 import { deleteSecretBestEffort } from "./secret-store-factory.js";
+import type { SafeWebFetchOptions } from "./web-ssrf.js";
 
 export type PurchaseDeps = Omit<PaymentWalletDeps, "paymentWallet"> & {
   jobs: JobPublisher;
   paymentWallet?: PaymentWalletProvider | null;
+  paidRequestFetch?: Pick<SafeWebFetchOptions, "fetch" | "resolveHostname">;
 };
 
 /** Statuses that still wait on the wallet owner, so the worker keeps polling. */
@@ -31,18 +36,17 @@ export const PENDING_PURCHASE_STATUSES: ReadonlySet<string> = new Set<PurchaseSt
 ]);
 export const PURCHASE_POLL_MS = 5_000;
 
-const NOT_CONFIGURED = { error: "No wallet is available." };
+export const NOT_CONFIGURED = { error: "No wallet is available." };
 const DISCONNECTED = {
   error: "The user's wallet is not connected. Ask them to connect it in Settings, then try again.",
 };
+const NOT_APPROVED = { error: "The purchase is not approved. Check purchase_status." };
 
 const NEXT: Record<string, string> = {
   pending_approval:
     "Tell the user to approve it in their wallet, then end your turn. You are woken when they decide.",
   needs_action:
     "The user must finish a step in their wallet at approvalUrl. You are woken when it changes.",
-  approved:
-    'Type the card on merchantUrl with browser_act fill_card (field "number", then "cvc"), passing this purchase id. Type the expiry and billing details yourself.',
   denied: "The user declined. Do not retry unless they ask.",
   expired: "The approval request expired. Ask the user before requesting again.",
   canceled: "The purchase was canceled.",
@@ -50,8 +54,16 @@ const NEXT: Record<string, string> = {
   completed: "The purchase is complete.",
 };
 
-function purchaseView(purchase: Purchase, card?: PurchaseCardSummary) {
+const NEXT_APPROVED: Record<PurchaseCredentialKind, string> = {
+  card: "Type the card on merchantUrl with browser_act fill_card for each card field the checkout shows (number, expiry, cvc, postal_code), passing this purchase id. Type the cardholder name and address yourself.",
+  pay_token:
+    "On merchantUrl, use browser_act fill_pay_token with this purchase id, then submit the checkout.",
+  http_payment: "Call paid_request with this purchase id to send the request with the payment.",
+};
+
+export function purchaseView(purchase: Purchase, card?: PurchaseCardSummary) {
   const status = purchase.status;
+  const kind = credentialKind(purchase);
   return {
     id: purchase.id,
     status,
@@ -75,32 +87,59 @@ function purchaseView(purchase: Purchase, card?: PurchaseCardSummary) {
         }
       : {}),
     next:
-      status === "approved" && !card ? "Call purchase_status for the card details." : NEXT[status],
+      status !== "approved"
+        ? NEXT[status]
+        : kind === "card" && !card
+          ? "Call purchase_status for the card details."
+          : NEXT_APPROVED[kind],
   };
 }
 
-function providerError(error: unknown) {
+function credentialKind(purchase: Purchase): PurchaseCredentialKind {
+  return purchase.credentialType === "pay_token" || purchase.credentialType === "http_payment"
+    ? purchase.credentialType
+    : "card";
+}
+
+export function providerError(error: unknown) {
   if (error instanceof PaymentWalletDisconnected) return DISCONNECTED;
   if (error instanceof PaymentWalletRequestRejected) return { error: error.message };
   throw error;
 }
 
-function walletDeps(deps: PurchaseDeps, provider: PaymentWalletProvider): PaymentWalletDeps {
+type WalletStoreDeps = Pick<PurchaseDeps, "prisma" | "secretStore">;
+
+function walletDeps(deps: WalletStoreDeps, provider: PaymentWalletProvider): PaymentWalletDeps {
   return { prisma: deps.prisma, secretStore: deps.secretStore, paymentWallet: provider };
+}
+
+export function withPurchaseWallet<T>(
+  deps: WalletStoreDeps,
+  provider: PaymentWalletProvider,
+  owner: { userId: string; spaceId: string },
+  fn: (credential: PaymentWalletCredential) => Promise<T>,
+): Promise<T> {
+  return withPaymentWalletCredential(
+    walletDeps(deps, provider),
+    { userId: owner.userId, spaceId: owner.spaceId },
+    fn,
+  );
 }
 
 /** Load a purchase's live status from the wallet, failing like the provider does. */
 export async function fetchPurchase(
-  deps: PurchaseDeps,
+  deps: WalletStoreDeps,
   provider: PaymentWalletProvider,
   purchase: Purchase,
   context: AdapterContext,
 ): Promise<PurchaseSnapshot> {
-  return withPaymentWalletCredential(
-    walletDeps(deps, provider),
-    { userId: purchase.userId, spaceId: purchase.spaceId },
-    (credential) => provider.getPurchase(credential, purchase.remoteId, context),
+  return withPurchaseWallet(deps, provider, purchase, (credential) =>
+    provider.getPurchase(credential, purchase.remoteId, context),
   );
+}
+
+export function walletSupports(provider: PaymentWalletProvider, kind: PurchaseCredentialKind) {
+  return provider.describe().capabilities.credentials.includes(kind);
 }
 
 /** request_purchase and purchase_status. Results never carry the card number or security code. */
@@ -116,14 +155,7 @@ export async function executePurchaseTool(
   if (name === "request_purchase") return requestPurchase(deps, provider, context, run, args);
   const parsed = PurchaseIdInput.safeParse(args);
   if (!parsed.success) return { error: "A purchase id is required." };
-  const purchase = await deps.prisma.purchase.findFirst({
-    where: {
-      id: parsed.data.id,
-      spaceId: context.spaceId,
-      userId: context.userId,
-      botId: context.botId,
-    },
-  });
+  const purchase = await findBotPurchase(deps, context, parsed.data.id);
   if (!purchase) return { error: "Unknown purchase." };
   if (!PENDING_PURCHASE_STATUSES.has(purchase.status) && purchase.status !== "approved")
     return purchaseView(purchase);
@@ -136,6 +168,25 @@ export async function executePurchaseTool(
   return purchaseView(await recordSeenStatus(deps, purchase, snapshot), snapshot.card);
 }
 
+/** Only the bot that asked for it: its later runs are the ones that keep hiding what it typed. */
+export function findBotPurchase(
+  deps: Pick<PurchaseDeps, "prisma">,
+  run: { spaceId: string; userId: string; botId: string },
+  id: string,
+): Promise<Purchase | null> {
+  return deps.prisma.purchase.findFirst({
+    where: { id, spaceId: run.spaceId, userId: run.userId, botId: run.botId },
+  });
+}
+
+export function inputError(error: { issues: { path: PropertyKey[]; message: string }[] }) {
+  return {
+    error: error.issues
+      .map((issue) => (issue.path.length ? `${issue.path.join(".")}: ` : "") + issue.message)
+      .join("; "),
+  };
+}
+
 async function requestPurchase(
   deps: PurchaseDeps,
   provider: PaymentWalletProvider,
@@ -144,14 +195,43 @@ async function requestPurchase(
   args: Record<string, unknown>,
 ) {
   const parsed = PurchaseRequestInput.safeParse(args);
-  if (!parsed.success) {
-    return {
-      error: parsed.error.issues
-        .map((issue) => (issue.path.length ? `${issue.path.join(".")}: ` : "") + issue.message)
-        .join("; "),
-    };
-  }
-  const request = parsed.data;
+  if (!parsed.success) return inputError(parsed.error);
+  const { merchantAccountId, ...request } = parsed.data;
+  const credential: PurchaseCredential = merchantAccountId
+    ? { kind: "pay_token", merchantAccountId }
+    : { kind: "card", merchantName: request.merchantName, merchantUrl: request.merchantUrl };
+  if (!walletSupports(provider, credential.kind))
+    return { error: "The user's wallet can't pay with a pay token. Use the card instead." };
+  return createPurchase(deps, provider, context, run, {
+    credential,
+    amount: request.amount,
+    currency: request.currency,
+    reason: request.reason,
+    merchantName: request.merchantName,
+    merchantUrl: request.merchantUrl,
+  });
+}
+
+/**
+ * Ask the wallet owner to approve a purchase and record it. `merchantUrl` is where it may be
+ * used; for a pay token or HTTP payment it stays here and is never sent to the wallet.
+ */
+export async function createPurchase(
+  deps: PurchaseDeps,
+  provider: PaymentWalletProvider,
+  context: AdapterContext & { botId: string },
+  run: { threadId: string },
+  request: {
+    credential: PurchaseCredential;
+    amount: number;
+    currency: string;
+    reason: string;
+    merchantName: string;
+    merchantUrl: string;
+    paymentChallenge?: string;
+    requestCiphertext?: string;
+  },
+) {
   const existing = await deps.prisma.purchase.findUnique({
     where: { operationKey: context.operationId },
   });
@@ -159,15 +239,18 @@ async function requestPurchase(
   let snapshot: PurchaseSnapshot;
   try {
     // The idempotency key makes a replay after a crash reuse the same remote purchase.
-    snapshot = await withPaymentWalletCredential(
-      walletDeps(deps, provider),
-      { userId: context.userId, spaceId: context.spaceId },
-      (credential) =>
-        provider.createPurchase(
-          credential,
-          { ...request, idempotencyKey: context.operationId },
-          context,
-        ),
+    snapshot = await withPurchaseWallet(deps, provider, context, (credential) =>
+      provider.createPurchase(
+        credential,
+        {
+          credential: request.credential,
+          amount: request.amount,
+          currency: request.currency,
+          reason: request.reason,
+          idempotencyKey: context.operationId,
+        },
+        context,
+      ),
     );
   } catch (error) {
     return providerError(error);
@@ -190,8 +273,13 @@ async function requestPurchase(
         threadGeneration: thread.historyCompactionGeneration,
         provider: provider.describe().id,
         remoteId: snapshot.id,
+        credentialType: request.credential.kind,
         merchantName: request.merchantName,
         merchantUrl: request.merchantUrl,
+        merchantAccountId:
+          request.credential.kind === "pay_token" ? request.credential.merchantAccountId : null,
+        paymentChallenge: request.paymentChallenge ?? null,
+        requestCiphertext: request.requestCiphertext ?? null,
         amount: request.amount,
         currency: request.currency,
         status: snapshot.status,
@@ -217,7 +305,7 @@ function ownedReplay(purchase: Purchase, context: AdapterContext) {
  * Save a status the bot just saw. It already knows it, so the poller does not wake it for
  * the same status. The updatedAt fence leaves a concurrent poll's newer write in place.
  */
-async function recordSeenStatus(
+export async function recordSeenStatus(
   deps: PurchaseDeps,
   purchase: Purchase,
   snapshot: PurchaseSnapshot,
@@ -249,6 +337,17 @@ export async function enqueuePurchasePoll(
   });
 }
 
+export function purchaseContext(purchase: Purchase, use: string): AdapterContext {
+  return {
+    operationId: `purchase.${use}:${purchase.id}`,
+    traceId: purchase.id,
+    spaceId: purchase.spaceId,
+    userId: purchase.userId,
+    botId: purchase.botId,
+    signal: AbortSignal.timeout(30_000),
+  };
+}
+
 /**
  * The single-use card value browser_act fill_card types. Only the page fill path holds it;
  * `redactions` keep the number out of anything the run records afterwards.
@@ -261,27 +360,34 @@ export async function resolvePurchaseCardFill(
 ): Promise<{ text: string; origin: string; redactions: string[] } | { error: string }> {
   const provider = deps.paymentWallet;
   if (!provider) return NOT_CONFIGURED;
-  const purchase = await deps.prisma.purchase.findFirst({
-    // Only the bot that asked for it: its later runs are the ones that keep hiding the card.
-    where: { id: purchaseId, spaceId: run.spaceId, userId: run.userId, botId: run.botId },
-  });
+  const purchase = await findBotPurchase(deps, run, purchaseId);
   if (!purchase) return { error: "Unknown purchase." };
-  if (purchase.status !== "approved")
-    return { error: "The purchase is not approved. Check purchase_status." };
-  const context: AdapterContext = {
-    operationId: `purchase.card:${purchase.id}`,
-    traceId: purchase.id,
-    spaceId: purchase.spaceId,
-    userId: purchase.userId,
-    botId: purchase.botId,
-    signal: AbortSignal.timeout(30_000),
-  };
+  if (purchase.status !== "approved") return NOT_APPROVED;
+  if (credentialKind(purchase) !== "card")
+    return { error: "This purchase pays without a card. Check purchase_status." };
+  const context = purchaseContext(purchase, "card");
+  const origin = new URL(purchase.merchantUrl).origin;
+  if (field === "expiry" || field === "postal_code") {
+    let card: PurchaseCardSummary | undefined;
+    try {
+      const snapshot = await fetchPurchase(deps, provider, purchase, context);
+      if (snapshot.status === "approved") card = snapshot.card;
+    } catch (error) {
+      return providerError(error);
+    }
+    if (!card) return NOT_APPROVED;
+    // Typed fills keep only the digits; a field filled directly gets the slash it expects.
+    const text =
+      field === "expiry"
+        ? `${String(card.expMonth).padStart(2, "0")}/${String(card.expYear % 100).padStart(2, "0")}`
+        : (card.billingAddress?.postalCode?.trim() ?? "");
+    if (!text) return { error: "This card has no billing postal code." };
+    return { text, origin, redactions: [] };
+  }
   let secret: Awaited<ReturnType<PaymentWalletProvider["revealCard"]>>;
   try {
-    secret = await withPaymentWalletCredential(
-      { prisma: deps.prisma, secretStore: deps.secretStore, paymentWallet: provider },
-      { userId: purchase.userId, spaceId: purchase.spaceId },
-      (credential) => provider.revealCard(credential, purchase.remoteId, context),
+    secret = await withPurchaseWallet(deps, provider, purchase, (credential) =>
+      provider.revealCard(credential, purchase.remoteId, context),
     );
   } catch (error) {
     return providerError(error);
@@ -289,24 +395,70 @@ export async function resolvePurchaseCardFill(
   const text = field === "number" ? secret.number : secret.cvc;
   if (!text) return { error: "This card has no security code." };
   // The page keeps the card after this run, so later runs on this bot hide it too.
-  if (!purchase.cardCiphertext) {
-    const recordId = `purchase-card:${purchase.id}`;
-    const stored = await deps.secretStore.put(secret.number, context, { recordId });
-    // A concurrent first fill or a failed write leaves this copy unreferenced, so it goes.
-    const saved = await deps.prisma.purchase
-      .updateMany({
-        where: { id: purchase.id, cardCiphertext: null },
-        data: { cardCiphertext: stored.ciphertext },
-      })
-      .catch(() => ({ count: 0 }));
-    if (!saved.count)
-      await deleteSecretBestEffort(deps.secretStore, stored.ciphertext, { recordId });
+  await sealOnce(deps, purchase, "cardCiphertext", secret.number, context);
+  return { text, origin, redactions: cardRedactionForms(secret.number) };
+}
+
+/**
+ * The approved pay token browser_act fill_pay_token hands to the checkout. Like a card, only the
+ * page fill path holds it, and later runs of the bot keep hiding it.
+ */
+export async function resolvePurchasePayTokenFill(
+  deps: Omit<PurchaseDeps, "jobs">,
+  run: { spaceId: string; userId: string; botId: string },
+  purchaseId: string,
+): Promise<
+  | { text: string; origin: string; merchantAccountId: string; redactions: string[] }
+  | { error: string }
+> {
+  const provider = deps.paymentWallet;
+  if (!provider) return NOT_CONFIGURED;
+  const purchase = await findBotPurchase(deps, run, purchaseId);
+  if (!purchase) return { error: "Unknown purchase." };
+  if (credentialKind(purchase) !== "pay_token" || !purchase.merchantAccountId)
+    return { error: "This purchase has no pay token. Check purchase_status." };
+  if (purchase.status !== "approved") return NOT_APPROVED;
+  const context = purchaseContext(purchase, "pay-token");
+  let token: string;
+  try {
+    // Fetched right before use: the token is short-lived.
+    token = await withPurchaseWallet(deps, provider, purchase, (credential) =>
+      provider.revealPayToken(credential, purchase.remoteId, context),
+    );
+  } catch (error) {
+    return providerError(error);
   }
+  await sealOnce(deps, purchase, "tokenCiphertext", JSON.stringify([token]), context);
   return {
-    text,
+    text: token,
     origin: new URL(purchase.merchantUrl).origin,
-    redactions: cardRedactionForms(secret.number),
+    merchantAccountId: purchase.merchantAccountId,
+    redactions: [token],
   };
+}
+
+/** Seal a purchase secret for later runs' redaction, once; a losing concurrent copy is deleted. */
+export async function sealOnce(
+  deps: WalletStoreDeps,
+  purchase: Purchase,
+  column: "cardCiphertext" | "tokenCiphertext",
+  plaintext: string,
+  context: AdapterContext,
+) {
+  if (purchase[column]) return;
+  const recordId = sealedRecordId(purchase.id, column);
+  const stored = await deps.secretStore.put(plaintext, context, { recordId });
+  const saved = await deps.prisma.purchase
+    .updateMany({
+      where: { id: purchase.id, [column]: null },
+      data: { [column]: stored.ciphertext },
+    })
+    .catch(() => ({ count: 0 }));
+  if (!saved.count) await deleteSecretBestEffort(deps.secretStore, stored.ciphertext, { recordId });
+}
+
+function sealedRecordId(purchaseId: string, column: "cardCiphertext" | "tokenCiphertext") {
+  return `${column === "cardCiphertext" ? "purchase-card" : "purchase-token"}:${purchaseId}`;
 }
 
 /** A card number as pages show it: as given, digits only, and in groups of four. */
@@ -316,14 +468,14 @@ function cardRedactionForms(number: string): string[] {
   return [...new Set([number, digits, grouped].filter(Boolean))];
 }
 
-/** Single-use cards stop working well within this, and with them the reason to hide one. */
-const CARD_REDACTION_WINDOW_MS = 7 * 24 * 60 * 60_000;
+/** Single-use cards and tokens stop working well within this, and with them the reason to hide one. */
+const REDACTION_WINDOW_MS = 7 * 24 * 60 * 60_000;
 
 /**
- * Redaction forms of every card this bot typed recently. A checkout can keep or copy the number
- * after the filling run, so each run hides them before any tool output reaches the model.
+ * Every card and payment token this bot used recently. A checkout or API can keep or copy one
+ * after the run that used it, so each run hides them before any tool output reaches the model.
  */
-export async function loadPurchaseCardRedactions(
+export async function loadPurchaseRedactions(
   deps: Pick<PurchaseDeps, "prisma" | "secretStore">,
   run: { spaceId: string; userId: string; botId: string },
 ): Promise<string[]> {
@@ -332,20 +484,31 @@ export async function loadPurchaseCardRedactions(
       spaceId: run.spaceId,
       userId: run.userId,
       botId: run.botId,
-      cardCiphertext: { not: null },
-      createdAt: { gte: new Date(Date.now() - CARD_REDACTION_WINDOW_MS) },
+      OR: [{ cardCiphertext: { not: null } }, { tokenCiphertext: { not: null } }],
+      createdAt: { gte: new Date(Date.now() - REDACTION_WINDOW_MS) },
     },
-    select: { id: true, cardCiphertext: true },
+    select: { id: true, cardCiphertext: true, tokenCiphertext: true },
   });
   const forms = new Set<string>();
   for (const row of rows) {
     try {
-      const number = await deps.secretStore.load(row.cardCiphertext!, {
-        recordId: `purchase-card:${row.id}`,
-      });
-      for (const form of cardRedactionForms(number)) forms.add(form);
+      if (row.cardCiphertext) {
+        const number = await deps.secretStore.load(row.cardCiphertext, {
+          recordId: sealedRecordId(row.id, "cardCiphertext"),
+        });
+        for (const form of cardRedactionForms(number)) forms.add(form);
+      }
+      if (row.tokenCiphertext) {
+        const tokens = JSON.parse(
+          await deps.secretStore.load(row.tokenCiphertext, {
+            recordId: sealedRecordId(row.id, "tokenCiphertext"),
+          }),
+        ) as unknown;
+        for (const token of Array.isArray(tokens) ? tokens : [])
+          if (typeof token === "string" && token) forms.add(token);
+      }
     } catch {
-      getLogger().warn("purchase card redaction could not be loaded");
+      getLogger().warn("purchase redaction could not be loaded");
     }
   }
   return [...forms];

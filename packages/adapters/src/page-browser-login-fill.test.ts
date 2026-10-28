@@ -51,7 +51,15 @@ function installPageHelper(url: string, html: string) {
       __rakazoPageBrowser: {
         snapshot: () => {
           elements: Array<{ ref: string; name: string; role: string; value?: string }>;
+          tree: string;
+          frames: boolean;
         };
+        findCard: (token: string) => number;
+        hasCardField: () => boolean;
+        focusCard: () => boolean;
+        cardHolds: () => boolean;
+        cardTyped: (length: number) => boolean;
+        emptyCard: () => void;
         fill: (ref: string, value: string, origin?: string, field?: string) => { url: string };
         focusForKeys: (ref: string, whole?: boolean) => { focused: boolean };
         focusHolds: () => boolean;
@@ -280,6 +288,40 @@ describe("live page helper card fill", () => {
       /^Refused: This field didn't accept the card, so it was cleared\.$/,
     );
     expect(setter.get!.call(field)).toBe("");
+  });
+
+  it("finds the one visible card field by its autocomplete token for a fill without a ref", () => {
+    const { domWindow, browser } = installPageHelper(
+      `${origin}/pay`,
+      `<input aria-label="Autofill" autocomplete="cc-number" aria-hidden="true" />
+        <input aria-label="Faded" autocomplete="cc-exp" style="opacity: 0" />
+        <input aria-label="Email" autocomplete="cc-csc" type="email" />
+        <input aria-label="Card number" autocomplete="section-pay billing CC-Number" />
+        <input aria-label="Postal" autocomplete="postal-code" /><input autocomplete="postal-code" />
+        <iframe></iframe>`,
+    );
+    expect(browser.findCard("cc-exp")).toBe(0);
+    expect(browser.findCard("cc-csc")).toBe(0);
+    expect(browser.findCard("postal-code")).toBe(2);
+    expect(browser.focusCard()).toBe(false);
+    expect(browser.hasCardField()).toBe(true);
+    expect(browser.findCard("cc-number")).toBe(1);
+    const field = domWindow.document.querySelector<HTMLInputElement>('[aria-label="Card number"]')!;
+    const mask = vi.spyOn(field.style, "setProperty");
+    expect(browser.focusCard()).toBe(true);
+    expect(mask).toHaveBeenCalledWith("-webkit-text-security", "disc", "important");
+    expect(browser.cardHolds()).toBe(true);
+    field.value = "4242 4242 4242 4242";
+    expect(browser.cardTyped(16)).toBe(true);
+    expect(browser.cardTyped(15)).toBe(false);
+    const snapshot = browser.snapshot();
+    expect(snapshot.frames).toBe(true);
+    expect(JSON.stringify(snapshot)).not.toContain("4242 4242");
+    expect(JSON.stringify(snapshot)).not.toContain("4242424242424242");
+    domWindow.document.querySelector<HTMLInputElement>('[aria-label="Email"]')!.focus();
+    expect(browser.cardHolds()).toBe(false);
+    browser.emptyCard();
+    expect(field.value).toBe("");
   });
 
   it("is refused by a helper that reads an unknown field as a password, outside password inputs", () => {

@@ -5,6 +5,7 @@ import type {
   PurchaseRequest,
 } from "@rakazo/adapter-kit";
 import { PaymentWalletDisconnected, PaymentWalletRequestRejected } from "@rakazo/adapter-kit";
+import { Challenge, Credential } from "mppx";
 import { describe, expect, it } from "vitest";
 import { LinkWalletProvider } from "./link-wallet.js";
 import { EmulatorPaymentWalletProvider } from "./payment-wallet-emulator.js";
@@ -22,10 +23,13 @@ const reason =
 
 function purchase(overrides: Partial<PurchaseRequest> = {}): PurchaseRequest {
   return {
+    credential: {
+      kind: "card",
+      merchantName: "Example Theater",
+      merchantUrl: "https://tickets.example.com/checkout",
+    },
     amount: 2500,
     currency: "usd",
-    merchantName: "Example Theater",
-    merchantUrl: "https://tickets.example.com/checkout",
     reason,
     idempotencyKey: "op-1",
     ...overrides,
@@ -54,7 +58,10 @@ function fakeLink() {
     refresh: new Set<string>(),
     revoked: [] as string[],
     created: [] as Record<string, unknown>[],
-    requests: new Map<string, { status: string; amount: number; reads: number }>(),
+    requests: new Map<
+      string,
+      { status: string; amount: number; reads: number; credentialType: string }
+    >(),
     nextCreate: null as null | { status: number; body: unknown },
     nextRetrieve: null as null | Record<string, unknown>,
     sequence: 0,
@@ -72,19 +79,27 @@ function fakeLink() {
     state.refresh.add(refresh);
     return { access_token: access, refresh_token: refresh, expires_in: 3600, token_type: "Bearer" };
   };
-  const spendRequest = (id: string, includeCard: boolean) => {
+  const spendRequest = (id: string, include: string | null) => {
     const request = state.requests.get(id)!;
     const approved = request.status === "approved";
+    const type = request.credentialType;
     return {
       id,
       status: request.status,
       amount: request.amount,
       currency: "usd",
+      credential_type: type,
       created_at: "2026-10-27T00:00:00Z",
       updated_at: "2026-10-27T00:00:00Z",
       approval_url: `https://app.link.com/approve/${id}`,
-      ...(approved ? { card_brand: "visa", card_last4: "4242" } : {}),
-      ...(approved && includeCard
+      ...(approved && type === "card" ? { card_brand: "visa", card_last4: "4242" } : {}),
+      ...(approved && type === "link_pay_token" && include === "link_pay_token"
+        ? { link_pay_token: "lpt_fake_secret" }
+        : {}),
+      ...(approved && type === "shared_payment_token" && include === "shared_payment_token"
+        ? { shared_payment_token: { id: "spt_fake_link_secret" } }
+        : {}),
+      ...(approved && type === "card" && include === "card"
         ? {
             card: {
               id: "card_1",
@@ -163,7 +178,7 @@ function fakeLink() {
           return json(400, {
             error: {
               code: "duplicate_spend_request",
-              duplicate_spend_request: spendRequest(existing, false),
+              duplicate_spend_request: spendRequest(existing, null),
             },
           });
         }
@@ -172,8 +187,9 @@ function fakeLink() {
           status: "pending_approval",
           amount: Number(body.amount),
           reads: 0,
+          credentialType: String(body.credential_type),
         });
-        return json(200, spendRequest(id, false));
+        return json(200, spendRequest(id, null));
       }
       const id = url.pathname.split("/")[2]!;
       if (method === "GET" && id) {
@@ -187,7 +203,7 @@ function fakeLink() {
         if (request.status === "pending_approval" && request.reads++ > 0) {
           request.status = request.amount > 100_000 ? "denied" : "approved";
         }
-        return json(200, spendRequest(id, url.searchParams.get("include") === "card"));
+        return json(200, spendRequest(id, url.searchParams.get("include")));
       }
     }
     return json(404, {});
@@ -212,6 +228,42 @@ async function settle(
     if (snapshot.status !== "pending_approval") return snapshot;
   }
   throw new Error("Purchase never settled.");
+}
+
+const realm = "api.example.test";
+const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+
+function paymentRequired(amount = "500", id = "challenge-1") {
+  return [
+    `Payment id="tempo-1", realm="${realm}", method="tempo", intent="charge", request="${encode({ amount, currency: "0x01", recipient: "0x02" })}"`,
+    Challenge.serialize({
+      id,
+      realm,
+      method: "stripe",
+      intent: "charge",
+      request: { amount, currency: "usd", methodDetails: { networkId: "net_fake_seller" } },
+    }),
+  ].join(", ");
+}
+
+/** A paid API that takes a credential only for the challenge it issued last. */
+function fakePaidApi() {
+  let issued = 0;
+  let amount = "500";
+  const paid: string[] = [];
+  return {
+    paid,
+    raise: (next: string) => {
+      amount = next;
+    },
+    challenge: () => paymentRequired(amount, `challenge-${++issued}`),
+    accept(authorization: string) {
+      const credential = Credential.deserialize<{ spt: string }>(authorization);
+      if (credential.challenge.id !== `challenge-${issued}`) return false;
+      paid.push(credential.payload.spt);
+      return true;
+    },
+  };
 }
 
 for (const [name, create] of suites) {
@@ -286,6 +338,95 @@ for (const [name, create] of suites) {
       );
     });
 
+    it("hands over a pay token only once approved, and no card", async () => {
+      const provider = create();
+      const credential = await connect(provider);
+      const created = await provider.createPurchase(
+        credential,
+        purchase({
+          credential: { kind: "pay_token", merchantAccountId: "acct_fake123" },
+          idempotencyKey: "op-pay-token",
+        }),
+        ctx,
+      );
+      expect(created.status).toBe("pending_approval");
+      await expect(provider.revealPayToken(credential, created.id, ctx)).rejects.toBeInstanceOf(
+        PaymentWalletRequestRejected,
+      );
+      const approved = await settle(provider, credential, created.id);
+      expect(approved.status).toBe("approved");
+      expect(approved.card).toBeUndefined();
+      const token = await provider.revealPayToken(credential, created.id, ctx);
+      expect(token).toMatch(/\S{8,}/);
+      expect(JSON.stringify(approved)).not.toContain(token);
+      await expect(provider.revealCard(credential, created.id, ctx)).rejects.toBeInstanceOf(
+        PaymentWalletRequestRejected,
+      );
+    });
+
+    it("pays the Stripe challenge of a 402 response after approval", async () => {
+      const provider = create();
+      const credential = await connect(provider);
+      const api = fakePaidApi();
+      const read = await provider.readHttpPaymentChallenge(api.challenge());
+      expect(read).toMatchObject({ amount: 500, currency: "usd" });
+      expect(
+        await provider.readHttpPaymentChallenge(paymentRequired().split(", Payment ")[0]!),
+      ).toBeNull();
+      await expect(
+        provider.createPurchase(
+          credential,
+          purchase({
+            credential: { kind: "http_payment", challenge: read!.challenge },
+            amount: 600,
+            idempotencyKey: "op-http-wrong",
+          }),
+          ctx,
+        ),
+      ).rejects.toBeInstanceOf(PaymentWalletRequestRejected);
+      const created = await provider.createPurchase(
+        credential,
+        purchase({
+          credential: { kind: "http_payment", challenge: read!.challenge },
+          amount: 500,
+          idempotencyKey: "op-http",
+        }),
+        ctx,
+      );
+      await expect(
+        provider.authorizeHttpPayment(
+          credential,
+          created.id,
+          read!.challenge,
+          api.challenge(),
+          ctx,
+        ),
+      ).rejects.toBeInstanceOf(PaymentWalletRequestRejected);
+      expect((await settle(provider, credential, created.id)).status).toBe("approved");
+
+      const payment = await provider.authorizeHttpPayment(
+        credential,
+        created.id,
+        read!.challenge,
+        api.challenge(),
+        ctx,
+      );
+      expect(Object.keys(payment.headers)).toEqual(["authorization"]);
+      expect(api.accept(payment.headers.authorization!)).toBe(true);
+      expect(api.paid).toEqual(payment.secrets);
+
+      api.raise("900");
+      await expect(
+        provider.authorizeHttpPayment(
+          credential,
+          created.id,
+          read!.challenge,
+          api.challenge(),
+          ctx,
+        ),
+      ).rejects.toBeInstanceOf(PaymentWalletRequestRejected);
+    });
+
     it("honors abort", async () => {
       const provider = create();
       const credential = await connect(provider);
@@ -349,6 +490,50 @@ describe("Link wallet protocol", () => {
       request_approval: true,
       idempotency_key: "op-1",
     });
+  });
+
+  it("asks for pay tokens and HTTP payments without a merchant name or URL", async () => {
+    const link = fakeLink();
+    const provider = new LinkWalletProvider({ fetch: link.fetch });
+    const credential = await connect(provider);
+    await provider.createPurchase(
+      credential,
+      purchase({
+        credential: { kind: "pay_token", merchantAccountId: "acct_fake123" },
+        idempotencyKey: "op-pt",
+      }),
+      ctx,
+    );
+    const challenge = (await provider.readHttpPaymentChallenge(paymentRequired()))!.challenge;
+    await provider.createPurchase(
+      credential,
+      purchase({
+        credential: { kind: "http_payment", challenge },
+        amount: 500,
+        idempotencyKey: "op-spt",
+      }),
+      ctx,
+    );
+    expect(link.state.created).toEqual([
+      {
+        credential_type: "link_pay_token",
+        merchant_account_id: "acct_fake123",
+        amount: 2500,
+        currency: "usd",
+        context: reason,
+        request_approval: true,
+        idempotency_key: "op-pt",
+      },
+      {
+        credential_type: "shared_payment_token",
+        network_id: "net_fake_seller",
+        amount: 500,
+        currency: "usd",
+        context: reason,
+        request_approval: true,
+        idempotency_key: "op-spt",
+      },
+    ]);
   });
 
   it("maps provider statuses", async () => {

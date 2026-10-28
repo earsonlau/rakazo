@@ -27,7 +27,7 @@ function testWallet(): PaymentWalletProvider & { refresh: ReturnType<typeof vi.f
       id: "test-wallet",
       contractVersion: "1",
       adapterVersion: "0",
-      capabilities: { offline: true },
+      capabilities: { offline: true, credentials: ["card"] },
     }),
     beginConnect: async () => ({
       state: "device-state",
@@ -53,6 +53,13 @@ function testWallet(): PaymentWalletProvider & { refresh: ReturnType<typeof vi.f
       throw new Error("unused");
     },
     revealCard: async () => {
+      throw new Error("unused");
+    },
+    revealPayToken: async () => {
+      throw new Error("unused");
+    },
+    readHttpPaymentChallenge: async () => null,
+    authorizeHttpPayment: async () => {
       throw new Error("unused");
     },
   };

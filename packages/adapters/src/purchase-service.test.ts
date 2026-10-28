@@ -1,11 +1,20 @@
 import type { AdapterContext } from "@rakazo/adapter-kit";
 import { PaymentWalletDisconnected, PaymentWalletRequestRejected } from "@rakazo/adapter-kit";
+import { Challenge, Credential } from "mppx";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { FakePaymentWallet, fakeJobs, fakePurchasePrisma } from "./fake-purchases.js";
+import {
+  FAKE_PAY_TOKEN,
+  FAKE_SHARED_PAYMENT_TOKEN,
+  FakePaymentWallet,
+  fakeJobs,
+  fakePurchasePrisma,
+} from "./fake-purchases.js";
+import { executePaidRequest, paidRequestEffect, restorePaidRequest } from "./paid-request.js";
 import {
   executePurchaseTool,
-  loadPurchaseCardRedactions,
+  loadPurchaseRedactions,
   resolvePurchaseCardFill,
+  resolvePurchasePayTokenFill,
 } from "./purchase-service.js";
 
 vi.mock("./payment-wallets.js", () => ({
@@ -25,7 +34,7 @@ const request = {
   reason: "Two boxes of printer paper for the office, as the user asked this morning. ".repeat(2),
 };
 
-function setup() {
+function setup(paidRequestFetch?: typeof fetch) {
   const db = fakePurchasePrisma(fixture);
   const queue = fakeJobs();
   const wallet = new FakePaymentWallet();
@@ -46,6 +55,10 @@ function setup() {
     secretStore,
     jobs: queue.jobs,
     paymentWallet: wallet,
+    paidRequestFetch: {
+      fetch: paidRequestFetch,
+      resolveHostname: async () => [{ address: "203.0.113.10", family: 4 }],
+    },
   };
   const context = (operationId = "op-1"): AdapterContext & { botId: string } => ({
     operationId,
@@ -57,7 +70,9 @@ function setup() {
   });
   const call = (name: string, args: Record<string, unknown>, operationId?: string) =>
     executePurchaseTool(deps, context(operationId), { threadId: fixture.threadId }, name, args);
-  return { ...db, ...queue, wallet, deps, call, secrets };
+  const paid = (args: Record<string, unknown>, operationId?: string) =>
+    executePaidRequest(deps, context(operationId), { threadId: fixture.threadId }, args);
+  return { ...db, ...queue, wallet, deps, call, paid, secrets };
 }
 
 describe("request_purchase", () => {
@@ -211,21 +226,63 @@ describe("resolvePurchaseCardFill", () => {
     ).toEqual({ error: "Unknown purchase." });
   });
 
+  it("types the expiry as digits and the billing postal code from the approved card", async () => {
+    const env = setup();
+    await env.call("request_purchase", request);
+    const scope = { spaceId: fixture.spaceId, userId: fixture.userId, botId: fixture.botId };
+    env.purchases[0]!.status = "approved";
+    expect(await resolvePurchaseCardFill(env.deps, scope, "purchase-1", "expiry")).toEqual({
+      error: expect.stringContaining("not approved"),
+    });
+    const summary = { brand: "visa", last4: "4242", expMonth: 3, expYear: 2034 };
+    env.wallet.snapshots.set("remote-op-1", {
+      id: "remote-op-1",
+      status: "approved",
+      card: summary,
+    });
+    expect(await resolvePurchaseCardFill(env.deps, scope, "purchase-1", "expiry")).toEqual({
+      text: "03/34",
+      origin: "https://shop.example.test",
+      redactions: [],
+    });
+    expect(await resolvePurchaseCardFill(env.deps, scope, "purchase-1", "postal_code")).toEqual({
+      error: "This card has no billing postal code.",
+    });
+    env.wallet.snapshots.set("remote-op-1", {
+      id: "remote-op-1",
+      status: "approved",
+      card: {
+        ...summary,
+        billingAddress: {
+          name: "Test User",
+          line1: "1 Test St",
+          postalCode: " 94110 ",
+          country: "US",
+        },
+      },
+    });
+    expect(
+      await resolvePurchaseCardFill(env.deps, scope, "purchase-1", "postal_code"),
+    ).toMatchObject({ text: "94110", origin: "https://shop.example.test" });
+    // Neither detail reveals the card, so nothing is sealed for later runs to hide.
+    expect(env.purchases[0]!.cardCiphertext ?? null).toBeNull();
+  });
+
   it("keeps hiding a typed card in the bot's later runs, sealed at rest", async () => {
     const env = setup();
     await env.call("request_purchase", request);
     const run = { spaceId: fixture.spaceId, userId: fixture.userId, botId: fixture.botId };
-    expect(await loadPurchaseCardRedactions(env.deps, run)).toEqual([]);
+    expect(await loadPurchaseRedactions(env.deps, run)).toEqual([]);
     env.purchases[0]!.status = "approved";
     await resolvePurchaseCardFill(env.deps, run, "purchase-1", "number");
     await resolvePurchaseCardFill(env.deps, run, "purchase-1", "cvc");
     expect(env.purchases[0]!.cardCiphertext).toBe("sealed-1");
     expect(env.secrets.size).toBe(1);
-    expect(await loadPurchaseCardRedactions(env.deps, run)).toEqual([
+    expect(await loadPurchaseRedactions(env.deps, run)).toEqual([
       "4242424242424242",
       "4242 4242 4242 4242",
     ]);
-    expect(await loadPurchaseCardRedactions(env.deps, { ...run, botId: "bot-2" })).toEqual([]);
+    expect(await loadPurchaseRedactions(env.deps, { ...run, botId: "bot-2" })).toEqual([]);
   });
 
   it("deletes a sealed card that two first fills raced to save", async () => {
@@ -239,5 +296,267 @@ describe("resolvePurchaseCardFill", () => {
     ]);
     expect(env.secrets.size).toBe(1);
     expect(env.secrets.has(env.purchases[0]!.cardCiphertext!)).toBe(true);
+  });
+});
+
+describe("pay token purchases", () => {
+  const scope = { spaceId: fixture.spaceId, userId: fixture.userId, botId: fixture.botId };
+
+  it("asks for a pay token for the merchant account and hands it only to the page fill", async () => {
+    const env = setup();
+    const result = await env.call("request_purchase", {
+      ...request,
+      merchantAccountId: "acct_fake123",
+    });
+    expect(env.wallet.created[0]).toMatchObject({
+      credential: { kind: "pay_token", merchantAccountId: "acct_fake123" },
+      amount: 1999,
+    });
+    expect(result).toMatchObject({ status: "pending_approval", merchantUrl: request.merchantUrl });
+    expect(env.purchases[0]).toMatchObject({
+      credentialType: "pay_token",
+      merchantAccountId: "acct_fake123",
+    });
+    expect(await resolvePurchasePayTokenFill(env.deps, scope, "purchase-1")).toEqual({
+      error: expect.stringContaining("not approved"),
+    });
+
+    env.wallet.snapshots.set("remote-op-1", { id: "remote-op-1", status: "approved" });
+    const status = await env.call("purchase_status", { id: "purchase-1" });
+    expect(status).toMatchObject({
+      status: "approved",
+      next: expect.stringContaining("fill_pay_token"),
+    });
+    expect(JSON.stringify(status)).not.toContain(FAKE_PAY_TOKEN);
+    expect(await resolvePurchaseCardFill(env.deps, scope, "purchase-1", "number")).toEqual({
+      error: expect.stringContaining("without a card"),
+    });
+    expect(
+      await resolvePurchasePayTokenFill(env.deps, { ...scope, botId: "bot-2" }, "purchase-1"),
+    ).toEqual({ error: "Unknown purchase." });
+    expect(await resolvePurchasePayTokenFill(env.deps, scope, "purchase-1")).toEqual({
+      text: FAKE_PAY_TOKEN,
+      origin: "https://shop.example.test",
+      merchantAccountId: "acct_fake123",
+      redactions: [FAKE_PAY_TOKEN],
+    });
+    expect(await loadPurchaseRedactions(env.deps, scope)).toEqual([FAKE_PAY_TOKEN]);
+  });
+
+  it("refuses a pay token fill for a card purchase", async () => {
+    const env = setup();
+    await env.call("request_purchase", request);
+    env.purchases[0]!.status = "approved";
+    expect(await resolvePurchasePayTokenFill(env.deps, scope, "purchase-1")).toEqual({
+      error: expect.stringContaining("no pay token"),
+    });
+  });
+});
+
+describe("paid_request", () => {
+  const url = "https://api.example.test/v1/forecast?city=paris";
+  const paidArgs = {
+    url,
+    method: "post",
+    headers: { "content-type": "application/json" },
+    body: '{"days":3}',
+    reason:
+      "A three day weather forecast for Paris from the paid weather API, which the user asked for this morning to plan their trip next week.",
+  };
+
+  /** An MPP API charging 500 cents per call; `echo` makes it repeat the request's credentials. */
+  function paidApi(
+    options: {
+      amount?: string;
+      method?: string;
+      status?: number;
+      echo?: boolean;
+      pad?: number;
+    } = {},
+  ) {
+    let issued = 0;
+    const seen: { method: string; body: string | null; authorization: string | null }[] = [];
+    const api = {
+      seen,
+      amount: options.amount ?? "500",
+      status: options.status ?? 200,
+      fetch: (async (_input: string | URL | Request, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        const authorization = headers.get("authorization");
+        seen.push({
+          method: String(init?.method),
+          body: (init?.body as string) ?? null,
+          authorization,
+        });
+        if (authorization) {
+          const credential = Credential.deserialize<{ spt: string }>(authorization);
+          if (credential.challenge.id !== `challenge-${issued}`)
+            return new Response("stale", { status: 402 });
+          const body = options.echo
+            ? `${"x".repeat(options.pad ?? 0)}paid with ${credential.payload.spt} via ${authorization}`
+            : '{"forecast":"sun"}';
+          return new Response(body, {
+            status: api.status,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        issued += 1;
+        return new Response("Payment required", {
+          status: 402,
+          headers: {
+            "www-authenticate": Challenge.serialize({
+              id: `challenge-${issued}`,
+              realm: "api.example.test",
+              method: options.method ?? "stripe",
+              intent: "charge",
+              request: {
+                amount: api.amount,
+                currency: "usd",
+                methodDetails: { networkId: "net_fake" },
+              },
+            }),
+          },
+        });
+      }) as typeof fetch,
+    };
+    return api;
+  }
+
+  async function approvedPurchase(api = paidApi()) {
+    const env = setup(api.fetch);
+    const asked = await env.paid(paidArgs);
+    env.wallet.snapshots.set("remote-op-1", { id: "remote-op-1", status: "approved" });
+    return { env, api, asked };
+  }
+
+  it("asks the wallet owner for the amount the server's challenge names and seals the request", async () => {
+    const { env, api, asked } = await approvedPurchase();
+    expect(asked.result).toMatchObject({
+      id: "purchase-1",
+      status: "pending_approval",
+      amount: 500,
+      currency: "usd",
+      merchantName: "api.example.test",
+      merchantUrl: "https://api.example.test/v1/forecast",
+    });
+    expect(env.wallet.created[0]).toMatchObject({
+      credential: { kind: "http_payment" },
+      amount: 500,
+      currency: "usd",
+    });
+    expect(api.seen).toEqual([{ method: "POST", body: '{"days":3}', authorization: null }]);
+    const row = env.purchases[0]!;
+    expect(row).toMatchObject({ credentialType: "http_payment", amount: 500 });
+    expect(JSON.parse(env.secrets.get(row.requestCiphertext!)!)).toEqual({
+      url,
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"days":3}',
+    });
+    expect(JSON.stringify(row)).not.toContain("days");
+
+    expect((await env.paid(paidArgs)).result).toEqual(asked.result);
+    expect(env.purchases).toHaveLength(1);
+  });
+
+  it("sends the request again with the payment once approved, only once", async () => {
+    const { env, api } = await approvedPurchase();
+    const paid = await env.paid({ purchase: "purchase-1" }, "op-2");
+    expect(paid.result).toMatchObject({
+      purchase: { id: "purchase-1", status: "completed" },
+      status: 200,
+      body: '{"forecast":"sun"}',
+    });
+    expect(api.seen.at(-1)).toMatchObject({ method: "POST", body: '{"days":3}' });
+    expect(api.seen.at(-1)!.authorization).toMatch(/^Payment /);
+    expect(paid.redactions).toContain(FAKE_SHARED_PAYMENT_TOKEN);
+    expect(env.purchases[0]).toMatchObject({ status: "completed", nextPollAt: null });
+    expect(await loadPurchaseRedactions(env.deps, fixture)).toContain(FAKE_SHARED_PAYMENT_TOKEN);
+    expect((await env.paid({ purchase: "purchase-1" }, "op-3")).result).toEqual({
+      error: expect.stringContaining("already used"),
+    });
+  });
+
+  it("keeps payment credentials a server echoes out of the result", async () => {
+    const { env } = await approvedPurchase(paidApi({ echo: true }));
+    const paid = await env.paid({ purchase: "purchase-1" }, "op-2");
+    expect(JSON.stringify(paid.result)).not.toContain(FAKE_SHARED_PAYMENT_TOKEN);
+    expect(JSON.stringify(paid.result)).not.toMatch(/Payment ey/);
+  });
+
+  it("hides a token the response limit would cut in half", async () => {
+    const { env } = await approvedPurchase(paidApi({ echo: true, pad: 50_000 - 20 }));
+    const paid = await env.paid({ purchase: "purchase-1" }, "op-2");
+    const body = String((paid.result as { body: string }).body);
+    expect(body).not.toContain(FAKE_SHARED_PAYMENT_TOKEN.slice(0, 8));
+  });
+
+  it("logs only a digest of a paid request's headers and body", () => {
+    const effect = paidRequestEffect(paidArgs);
+    expect(effect).toMatchObject({ url: paidArgs.url, method: "post", sealed: expect.any(String) });
+    expect(JSON.stringify(effect)).not.toContain("days");
+    expect(JSON.stringify(effect)).not.toContain("content-type");
+    expect(paidRequestEffect({ purchase: "purchase-1" })).toEqual({ purchase: "purchase-1" });
+  });
+
+  it("resumes an approved request only with the headers and body that were approved", () => {
+    const approved = paidRequestEffect(paidArgs);
+    expect(restorePaidRequest(approved, paidArgs)).toEqual(paidArgs);
+    expect(restorePaidRequest(approved, { ...paidArgs, body: '{"days":30}' })).toEqual({
+      error: expect.stringContaining("changed after approval"),
+    });
+    expect(restorePaidRequest({ purchase: "purchase-1" }, {})).toEqual({ purchase: "purchase-1" });
+  });
+
+  it("marks the purchase failed when the paid request is refused", async () => {
+    const { env } = await approvedPurchase(paidApi({ status: 500 }));
+    const paid = await env.paid({ purchase: "purchase-1" }, "op-2");
+    expect(paid.result).toMatchObject({ purchase: { status: "failed" }, status: 500 });
+    expect(env.purchases[0]).toMatchObject({ status: "failed", wokenStatus: "failed" });
+  });
+
+  it("does not pay a challenge whose amount changed after approval", async () => {
+    const { env, api } = await approvedPurchase();
+    api.amount = "5000";
+    expect((await env.paid({ purchase: "purchase-1" }, "op-2")).result).toEqual({
+      error: expect.stringContaining("changed after approval"),
+    });
+    expect(api.seen.every((call) => !call.authorization)).toBe(true);
+    expect(env.purchases[0]!.status).toBe("approved");
+  });
+
+  it("waits for the owner's approval", async () => {
+    const env = setup(paidApi().fetch);
+    await env.paid(paidArgs);
+    expect((await env.paid({ purchase: "purchase-1" }, "op-2")).result).toMatchObject({
+      status: "pending_approval",
+    });
+  });
+
+  it("returns a response that asks for no payment, and pays no other method", async () => {
+    const free = setup((async () => new Response("free", { status: 200 })) as typeof fetch);
+    expect((await free.paid(paidArgs)).result).toMatchObject({ status: 200, body: "free" });
+    expect(free.purchases).toHaveLength(0);
+
+    const other = setup(paidApi({ method: "tempo" }).fetch);
+    expect((await other.paid(paidArgs)).result).toMatchObject({
+      status: 402,
+      error: expect.stringContaining("can't pay"),
+    });
+    expect(other.wallet.created).toHaveLength(0);
+  });
+
+  it("refuses credentials, plain HTTP and private hosts before sending anything", async () => {
+    const api = paidApi();
+    const env = setup(api.fetch);
+    expect(
+      (await env.paid({ ...paidArgs, headers: { Authorization: "Bearer fake-key" } })).result,
+    ).toEqual({ error: expect.stringContaining("Credentials") });
+    expect((await env.paid({ ...paidArgs, url: "http://api.example.test/" })).result).toEqual({
+      error: expect.stringContaining("HTTPS"),
+    });
+    env.deps.paidRequestFetch.resolveHostname = async () => [{ address: "10.0.0.5", family: 4 }];
+    expect((await env.paid(paidArgs)).result).toEqual({ error: expect.any(String) });
+    expect(api.seen).toHaveLength(0);
   });
 });

@@ -40,14 +40,29 @@ export type PurchaseStatus =
   | "completed"
   | "failed";
 
+export type PurchaseCredentialKind = "card" | "pay_token" | "http_payment";
+
+export interface HttpPaymentChallenge {
+  /** Opaque, provider-owned; pinned at approval and compared again before paying. */
+  challenge: string;
+  /** In the currency's minor unit. */
+  amount: number;
+  /** Lowercase ISO 4217 code. */
+  currency: string;
+}
+
+export type PurchaseCredential =
+  | { kind: "card"; merchantName: string; merchantUrl: string }
+  | { kind: "pay_token"; merchantAccountId: string }
+  /** `challenge` from `readHttpPaymentChallenge`. */
+  | { kind: "http_payment"; challenge: string };
+
 export interface PurchaseRequest {
+  credential: PurchaseCredential;
   /** In the currency's minor unit, such as cents for USD. */
   amount: number;
   /** Lowercase ISO 4217 code. */
   currency: string;
-  merchantName: string;
-  /** HTTPS page the purchase is made on. */
-  merchantUrl: string;
   /** What is being bought and why, shown to the wallet owner when they approve. */
   reason: string;
   /** Stable across retries of the same intent. */
@@ -88,9 +103,15 @@ export interface PaymentCardSecret {
   cvc?: string;
 }
 
+export interface HttpPaymentAuthorization {
+  headers: Record<string, string>;
+  secrets: string[];
+}
+
 export interface PaymentWalletCapabilities {
   /** Runs without the network; only the emulator. */
   offline: boolean;
+  credentials: readonly PurchaseCredentialKind[];
 }
 
 /**
@@ -130,6 +151,25 @@ export interface PaymentWalletProvider {
     id: string,
     context: AdapterContext,
   ): Promise<PaymentCardSecret>;
+  /** Fails unless the purchase is an approved pay token purchase. */
+  revealPayToken(
+    credential: PaymentWalletCredential,
+    id: string,
+    context: AdapterContext,
+  ): Promise<string>;
+  /** The payment a 402 response's `WWW-Authenticate` asks for, or null if this wallet can't make it. */
+  readHttpPaymentChallenge(wwwAuthenticate: string): Promise<HttpPaymentChallenge | null>;
+  /**
+   * Pay the challenge a retried request was answered with. Fails unless the purchase is approved
+   * and that challenge asks for the same payment as the approved one.
+   */
+  authorizeHttpPayment(
+    credential: PaymentWalletCredential,
+    id: string,
+    approved: string,
+    wwwAuthenticate: string,
+    context: AdapterContext,
+  ): Promise<HttpPaymentAuthorization>;
 }
 
 /** The provider no longer accepts the credential; the user has to connect again. */

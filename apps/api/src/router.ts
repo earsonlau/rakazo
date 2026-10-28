@@ -20,6 +20,8 @@ import type {
   MemoryProviderResolver,
   MessagingInstallations,
   PiOAuthLogins,
+  PluginRepoFetcher,
+  PluginTextReader,
   ProviderCatalogCache,
   PushTokenStore,
   RemoteConnectorDependencies,
@@ -31,6 +33,7 @@ import type { NavLink } from "@rakazo/contracts";
 import type { BoardEvents, PrismaClient, ThreadEvents } from "@rakazo/db";
 import type { BillingService } from "./billing.js";
 import { accountRoutes } from "./routes/account.js";
+import { availabilityRoutes } from "./routes/availability.js";
 import { boardsRoutes } from "./routes/boards.js";
 import { botsRoutes } from "./routes/bots.js";
 import { computerRoutes } from "./routes/computer.js";
@@ -92,6 +95,8 @@ export interface RouterDeps {
   mcp?: Pick<McpConnector, "probe">;
   connectors: ConnectorRegistry;
   remoteConnectors?: RemoteConnectorDependencies;
+  pluginRepoFetcher?: PluginRepoFetcher;
+  pluginMarketplaceRead?: PluginTextReader;
   artifacts: ArtifactStore;
   dataDir: string;
   messagingInstallations?: MessagingInstallations;
@@ -145,6 +150,7 @@ export function createRouter(deps: RouterDeps) {
     ...routinesRoutes(ctx),
     ...boardsRoutes(ctx),
     ...mcpRoutes(ctx),
+    ...availabilityRoutes(ctx),
     ...connectionsRoutes(ctx),
     ...messagingRoutes(ctx),
     ...contentRoutes(ctx),

@@ -2,6 +2,8 @@ import type {
   AdapterContext,
   AdapterDescriptor,
   BackgroundJob,
+  HttpPaymentAuthorization,
+  HttpPaymentChallenge,
   JobPublisher,
   PaymentCardSecret,
   PaymentWalletCapabilities,
@@ -10,6 +12,10 @@ import type {
   PurchaseSnapshot,
 } from "@rakazo/adapter-kit";
 import type { PrismaClient, Purchase } from "@rakazo/db";
+import { readStripeChargeChallenge, stripeChargeAuthorization } from "./mpp-stripe.js";
+
+export const FAKE_PAY_TOKEN = "fake_pay_token_secret";
+export const FAKE_SHARED_PAYMENT_TOKEN = "spt_fake_secret";
 
 /** A wallet whose purchase status a test sets directly. */
 export class FakePaymentWallet implements PaymentWalletProvider {
@@ -23,7 +29,7 @@ export class FakePaymentWallet implements PaymentWalletProvider {
       id: "fake",
       contractVersion: "1",
       adapterVersion: "0",
-      capabilities: { offline: true },
+      capabilities: { offline: true, credentials: ["card", "pay_token", "http_payment"] },
     };
   }
   beginConnect(): never {
@@ -54,12 +60,32 @@ export class FakePaymentWallet implements PaymentWalletProvider {
   async revealCard(): Promise<PaymentCardSecret> {
     return { number: "4242424242424242", cvc: "123" };
   }
+  async revealPayToken(): Promise<string> {
+    return FAKE_PAY_TOKEN;
+  }
+  async readHttpPaymentChallenge(header: string): Promise<HttpPaymentChallenge | null> {
+    return readStripeChargeChallenge(header);
+  }
+  async authorizeHttpPayment(
+    _credential: unknown,
+    _id: string,
+    approved: string,
+    header: string,
+  ): Promise<HttpPaymentAuthorization> {
+    return {
+      headers: {
+        authorization: await stripeChargeAuthorization(approved, header, FAKE_SHARED_PAYMENT_TOKEN),
+      },
+      secrets: [FAKE_SHARED_PAYMENT_TOKEN],
+    };
+  }
 }
 
 type Row = Record<string, unknown>;
 
 function matches(row: Row, where: Row): boolean {
   return Object.entries(where).every(([key, expected]) => {
+    if (key === "OR") return (expected as Row[]).some((branch) => matches(row, branch));
     const actual = row[key];
     if (expected instanceof Date)
       return actual instanceof Date && actual.getTime() === expected.getTime();
@@ -111,6 +137,11 @@ export function fakePurchasePrisma(fixture: {
         nextPollAt: null,
         wokenStatus: null,
         cardCiphertext: null,
+        tokenCiphertext: null,
+        merchantAccountId: null,
+        paymentChallenge: null,
+        requestCiphertext: null,
+        credentialType: "card",
         createdAt: new Date(),
         ...create,
         updatedAt: stamp(),

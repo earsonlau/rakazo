@@ -238,7 +238,7 @@ describe("builtin tools", () => {
         disabledBuiltinTools: ticketNames,
       }).map((tool) => tool.name),
     ).toEqual(disabled);
-    const purchaseNames = ["request_purchase", "purchase_status"];
+    const purchaseNames = ["request_purchase", "purchase_status", "paid_request"];
     expect(enabled.filter((name) => purchaseNames.includes(name))).toEqual([]);
     expect(
       selectBuiltinToolsForRun({ ...options, paymentWalletEnabled: true })
