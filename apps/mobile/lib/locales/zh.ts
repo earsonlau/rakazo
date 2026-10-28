@@ -1,4 +1,7 @@
 export const ZH_MESSAGES: Record<string, string> = {
+  "Share to": "分享到",
+  "{count} files": "{count} 个文件",
+  "could not read": "无法读取",
   "Not sent. Tap for options": "未发送。轻点查看选项",
   "Image input is not configured for this model.": "此模型尚未配置图片输入。",
   "Send as file": "作为文件发送",

@@ -1,4 +1,7 @@
 export const NL_MESSAGES: Record<string, string> = {
+  "Share to": "Delen met",
+  "{count} files": "{count} bestanden",
+  "could not read": "kon niet worden gelezen",
   "Not sent. Tap for options": "Niet verzonden. Tik voor opties",
   "Image input is not configured for this model.":
     "Afbeeldingsinvoer is niet ingesteld voor dit model.",

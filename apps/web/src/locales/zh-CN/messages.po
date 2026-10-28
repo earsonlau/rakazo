@@ -392,7 +392,7 @@ msgstr "{title}，保存为 {savedAs}"
 #: src/components/ToolActivityDisclosure.tsx
 #: src/pages/PluginsOverlay.tsx
 msgid "{toolCount, plural, one {# tool} other {# tools}}"
-msgstr "{toolCount, plural, other {#个工具}}"
+msgstr "{toolCount, plural, one {# 个工具} other {# 个工具}}"
 
 #. placeholder {0}: mention.name
 #: src/pages/shell/composer.tsx
@@ -755,7 +755,7 @@ msgstr "回答"
 #: src/components/call/IncomingCall.tsx
 msgctxt "incoming call"
 msgid "Answer"
-msgstr "回答"
+msgstr "接听"
 
 #: src/components/AskCard.tsx
 msgid "Answered"
@@ -3529,7 +3529,7 @@ msgstr "最大"
 #. js-lingui-explicit-id
 #: src/lib/model-catalog.ts
 msgid "Max"
-msgstr "最大"
+msgstr "最高"
 
 #: src/pages/Artifacts.tsx
 msgid "Maximize"

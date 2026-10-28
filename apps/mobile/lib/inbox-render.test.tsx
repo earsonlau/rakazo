@@ -193,6 +193,7 @@ const callbacks = {
   organizeBot: action,
   organizeFromMenu: action,
   organizeGroup: action,
+  sharing: false,
   spaceBusy: false,
   spaceRecoveryId: null,
   toggleCollapsed: action,
