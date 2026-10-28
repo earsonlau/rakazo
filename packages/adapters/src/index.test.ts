@@ -2,8 +2,7 @@ import { createCipheriv, createHash } from "node:crypto";
 import { BUILTIN_TOOL_NAMES, FLEET_TOOL_NAMES } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
 import { agentConnectionTools, builtinAgentTools, DELEGATION_TOOL_NAMES } from "./builtin-tools.js";
-import { selectBuiltinToolsForRun } from "./executor.js";
-import { FakeSandboxProvider } from "./fake-sandbox.js";
+import { selectBuiltinToolsForRun } from "./run-tool-selection.js";
 import { inferScript, ScriptedAgentRuntime } from "./scripted-runtime.js";
 import { EncryptedSecretStore } from "./secrets.js";
 
@@ -172,7 +171,7 @@ describe("scripted runtime", () => {
 });
 
 describe("builtin tools", () => {
-  it("keeps every fleet tool out of helper tool lists", () => {
+  it("keeps every bot management tool out of helper tool lists", () => {
     for (const name of FLEET_TOOL_NAMES) expect(DELEGATION_TOOL_NAMES.has(name), name).toBe(true);
   });
 
@@ -239,6 +238,13 @@ describe("builtin tools", () => {
         disabledBuiltinTools: ticketNames,
       }).map((tool) => tool.name),
     ).toEqual(disabled);
+    const purchaseNames = ["request_purchase", "purchase_status", "paid_request"];
+    expect(enabled.filter((name) => purchaseNames.includes(name))).toEqual([]);
+    expect(
+      selectBuiltinToolsForRun({ ...options, paymentWalletEnabled: true })
+        .map((tool) => tool.name)
+        .filter((name) => purchaseNames.includes(name)),
+    ).toEqual(purchaseNames);
     const updateBot = builtinAgentTools.find((tool) => tool.name === "update_bot");
     expect(updateBot?.inputSchema).toEqual(
       expect.objectContaining({
@@ -253,21 +259,5 @@ describe("builtin tools", () => {
         }),
       }),
     );
-  });
-});
-
-describe("fake sandbox", () => {
-  it("provisions isolated computers", async () => {
-    const sandbox = new FakeSandboxProvider();
-    const ctx = {
-      operationId: "1",
-      traceId: "1",
-      spaceId: "w",
-      userId: "u",
-      signal: new AbortController().signal,
-    };
-    const a = await sandbox.provision({ botId: "a", homePath: "/tmp/a" }, ctx);
-    const b = await sandbox.provision({ botId: "b", homePath: "/tmp/b" }, ctx);
-    expect(a.id).not.toBe(b.id);
   });
 });

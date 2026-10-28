@@ -11,10 +11,16 @@ import type {
   SandboxProvider,
   ScreenRequest,
   TerminalRequest,
+  WorkspaceDirectoryRequest,
+  WorkspaceExportLimits,
 } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
-import { DesktopSandboxProvider } from "./desktop-sandbox.js";
-import { createSandboxProvider, type SandboxProviderOptions } from "./sandbox-factory.js";
+import { cancelComputerRunWork } from "./computer-idle.js";
+import { manageComputerWorkspaceDirectories } from "./computer-workspace.js";
+import { assertHostCommandsAllowed, DesktopSandboxProvider } from "./desktop-sandbox.js";
+import { HostComputerSandbox } from "./host-computer-sandbox.js";
+import type { SandboxProviderOptions } from "./sandbox-factory.js";
+import { createSandboxProvider } from "./sandbox-factory.js";
 
 export function sandboxKindForBot(envKind: string, computerHost: string | null | undefined) {
   if (envKind === "docker" && computerHost === "this-mac") return "desktop";
@@ -26,6 +32,7 @@ export function createRunSandbox(
   opts: SandboxProviderOptions & { prisma?: PrismaClient },
 ): SandboxProvider {
   if (kind === "desktop") {
+    assertHostCommandsAllowed();
     return new DesktopSandboxProvider({
       root: opts.dataDir,
       hostRoots: [homedir()],
@@ -35,10 +42,7 @@ export function createRunSandbox(
   if (kind !== "docker" || !opts.prisma) return primary;
   return new HostAwareSandbox(
     primary,
-    new DesktopSandboxProvider({
-      root: opts.dataDir,
-      hostRoots: [homedir()],
-    }),
+    new HostComputerSandbox(opts.hostComputerUrl ?? "", opts.hostComputerToken ?? ""),
     async () => {
       const settings = await opts.prisma!.deploymentSettings.findUnique({
         where: { id: "default" },
@@ -110,6 +114,15 @@ export class HostAwareSandbox implements SandboxProvider {
     return provider.isRunning?.(computer, context) ?? false;
   }
 
+  async isStopped(computer: ComputerRef, context: AdapterContext): Promise<boolean> {
+    return this.route(computer).isStopped?.(computer, context) ?? false;
+  }
+
+  async environment(computer: ComputerRef, context: AdapterContext) {
+    const provider = this.route(computer);
+    return provider.environment?.(computer, context);
+  }
+
   prepare(computer: ComputerRef, context: AdapterContext) {
     return this.route(computer).prepare(computer, context);
   }
@@ -119,7 +132,21 @@ export class HostAwareSandbox implements SandboxProvider {
     request: CommandRequest,
     context: AdapterContext,
   ): AsyncIterable<ProcessEvent> {
+    if (computer.kind === "desktop" && !(await this.hostEnabled()))
+      throw new Error("Local computer access is disabled");
     yield* this.route(computer).execute(computer, request, context);
+  }
+
+  workspaceDirectories(
+    computer: ComputerRef,
+    request: WorkspaceDirectoryRequest,
+    context: AdapterContext,
+  ) {
+    return manageComputerWorkspaceDirectories(this.route(computer), computer, request, context);
+  }
+
+  cancelRunWork(computer: ComputerRef, computerId: string, runId: string, context: AdapterContext) {
+    return cancelComputerRunWork(this.route(computer), computer, computerId, runId, context);
   }
 
   connectScreen(computer: ComputerRef, request: ScreenRequest, context: AdapterContext) {
@@ -168,8 +195,8 @@ export class HostAwareSandbox implements SandboxProvider {
     return this.route(computer).writeFile(computer, file, context);
   }
 
-  exportWorkspace(computer: ComputerRef, context: AdapterContext) {
-    return this.route(computer).exportWorkspace(computer, context);
+  exportWorkspace(computer: ComputerRef, context: AdapterContext, limits?: WorkspaceExportLimits) {
+    return this.route(computer).exportWorkspace(computer, context, limits);
   }
 
   importWorkspace(
@@ -208,8 +235,8 @@ export class HostAwareSandbox implements SandboxProvider {
     );
   }
 
-  stop(computer: ComputerRef, context: AdapterContext) {
-    return this.route(computer).stop(computer, context);
+  stop(computer: ComputerRef, context: AdapterContext, options?: { discardUnsaved?: boolean }) {
+    return this.route(computer).stop(computer, context, options);
   }
 
   destroy(computer: ComputerRef, context: AdapterContext) {

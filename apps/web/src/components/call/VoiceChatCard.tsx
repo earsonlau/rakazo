@@ -6,9 +6,10 @@ import {
   voiceChatDuration,
   voiceChatSummary,
 } from "@rakazo/core";
-import { Button, buttonVariants, cn } from "@rakazo/ui-web";
+import { Button, buttonVariants, Collapsible, CollapsibleContent, cn } from "@rakazo/ui-web";
 import { ChevronDown, Phone, PhoneIncoming, PhoneMissed } from "lucide-react";
 import { useState } from "react";
+import { BuiCard } from "../ai/primitives";
 
 export function VoiceChatCard({
   group,
@@ -71,11 +72,11 @@ export function VoiceChatCard({
   const expandable = transcript.some((line) => line.text);
   const Icon = !request ? Phone : missed ? PhoneMissed : PhoneIncoming;
   return (
-    <div
+    <BuiCard
       data-testid="voice-chat-card"
       data-call-status={request?.status}
       className={cn(
-        "w-full max-w-[min(74%,calc(100%_-_6rem))] rounded-[20px] border border-border bg-card",
+        "w-full max-w-[min(74%,calc(100%_-_6rem))]",
         // The user's own call sits on their side; the bot's call on the bot's.
         request ? "me-auto" : "ms-auto",
       )}
@@ -107,12 +108,17 @@ export function VoiceChatCard({
               )}
             >
               <span className="sr-only">{open ? t`Hide transcript` : t`Show transcript`}</span>
-              <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+              <ChevronDown
+                className={cn(
+                  "size-4 transition-transform duration-150 ease-out motion-reduce:transition-none",
+                  open && "rotate-180",
+                )}
+              />
             </span>
           ) : null}
         </button>
         {missed && onCallBack ? (
-          <Button size="sm" className="shrink-0 rounded-full" onClick={onCallBack}>
+          <Button size="sm" className="shrink-0" onClick={onCallBack}>
             {t`Call back`}
           </Button>
         ) : null}
@@ -122,29 +128,31 @@ export function VoiceChatCard({
           {summary}
         </p>
       ) : null}
-      {open ? (
-        <div className="space-y-1.5 px-3 pb-3 text-sm">
-          {transcript.map((line) => {
-            if (!line.text) {
-              return <span key={line.id} data-message-id={line.id} className="sr-only" />;
-            }
-            return (
-              <p
-                key={line.id}
-                data-message-id={line.id}
-                dir="auto"
-                className={cn(
-                  line.role === "user"
-                    ? "text-end text-muted-foreground"
-                    : "rounded-md bg-muted/60 px-3 py-2 text-foreground",
-                )}
-              >
-                {line.text}
-              </p>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
+      <Collapsible open={open} className="contents">
+        <CollapsibleContent className="flex flex-col">
+          <div className="space-y-1.5 px-3 pb-3 text-sm">
+            {transcript.map((line) => {
+              if (!line.text) {
+                return <span key={line.id} data-message-id={line.id} className="sr-only" />;
+              }
+              return (
+                <p
+                  key={line.id}
+                  data-message-id={line.id}
+                  dir="auto"
+                  className={cn(
+                    line.role === "user"
+                      ? "text-end text-muted-foreground"
+                      : "rounded-md bg-muted/60 px-3 py-2 text-foreground",
+                  )}
+                >
+                  {line.text}
+                </p>
+              );
+            })}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </BuiCard>
   );
 }

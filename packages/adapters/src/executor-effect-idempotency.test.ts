@@ -1,4 +1,10 @@
-import type { AgentRunRequest } from "@rakazo/adapter-kit";
+import type {
+  AgentRunRequest,
+  MemoryCommitRequest,
+  MemoryReadRequest,
+  MemorySnapshot,
+} from "@rakazo/adapter-kit";
+import { MEMORY_REVISION_CONFLICT_ERROR } from "@rakazo/adapter-kit";
 import {
   legacyScopedToolEffectIdempotencyKey,
   toolEffectIdempotencyKey,
@@ -76,7 +82,8 @@ function fixture(runId = "run-1") {
     trigger: "user",
     leaseFence: 0,
   };
-  const memoryCommit = vi.fn(async () => ({ revision: "rev-1" }));
+  const memoryCommit = vi.fn(async (_request: MemoryCommitRequest) => ({ revision: "rev-1" }));
+  const memoryDocuments: MemorySnapshot["documents"] = [];
   const externalEffect = {
     findFirst: vi.fn(
       async ({
@@ -153,6 +160,7 @@ function fixture(runId = "run-1") {
         return { count: 1 };
       }),
     },
+    chatGroup: { findMany: vi.fn(async () => []) },
     bot: {
       findUniqueOrThrow: vi.fn(async () => ({
         id: run.botId,
@@ -185,17 +193,17 @@ function fixture(runId = "run-1") {
       findUniqueOrThrow: vi.fn(async () => ({ id: run.taskId, prompt: "Update shared state" })),
     },
     connection: { findMany: vi.fn(async () => []) },
-    spaceModelPreference: { findFirst: vi.fn(async () => null) },
+    userModelPreference: { findFirst: vi.fn(async () => null) },
+    userModelRoleChoice: { findMany: vi.fn(async () => []) },
     userModelCredential: { findFirst: vi.fn(async () => null) },
     deploymentSettings: {
       findUnique: vi.fn(async () => ({
-        defaultModelProvider: "scripted",
-        defaultModelId: "scripted",
+        defaultModelProvider: "openrouter",
+        defaultModelId: "fixture-model",
       })),
     },
     taughtSkill: { findMany: vi.fn(async () => []) },
-    agentSecret: { findMany: vi.fn(async () => []) },
-    botSecret: { findMany: vi.fn(async () => []) },
+    vaultCredential: { findMany: vi.fn(async () => []) },
     agentSkill: { findMany: vi.fn(async () => []) },
     scratchpadItem: {
       findMany: vi.fn(async () => scratchpadRows),
@@ -224,8 +232,9 @@ function fixture(runId = "run-1") {
         },
       ),
     },
-    actionApprovalRule: { findMany: vi.fn(async () => []) },
-    actionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: false })) },
+    spaceSettingOverride: { findUnique: async () => null },
+    userActionApprovalRule: { findMany: vi.fn(async () => []) },
+    userActionAutoReviewPreference: { findUnique: vi.fn(async () => ({ enabled: false })) },
     externalEffect,
   };
   const pauseRunForInput = vi.fn(async () => {
@@ -242,6 +251,7 @@ function fixture(runId = "run-1") {
     yield { type: "done" as const, text: "Done" };
   });
   const executor = createRunExecutor({
+    deploymentModelKey: "fixture-model-key",
     prisma: {
       ...prisma,
       $transaction: async (work: (tx: typeof prisma) => Promise<unknown>) => work(prisma),
@@ -257,7 +267,9 @@ function fixture(runId = "run-1") {
     sandbox: { describe: () => ({ capabilities: { graphical: false } }) },
     memory: {
       describe: () => ({ capabilities: {} }),
-      read: async () => ({ documents: [] }),
+      read: async (request: MemoryReadRequest) => ({
+        documents: memoryDocuments.filter((doc) => !request.path || doc.path === request.path),
+      }),
       search: async () => [],
       commit: memoryCommit,
       remove: vi.fn(async () => ({ removed: false })),
@@ -283,6 +295,7 @@ function fixture(runId = "run-1") {
     results,
     scratchpadRows,
     memoryCommit,
+    memoryDocuments,
     setCalls(next: ToolCall[]) {
       calls = next;
     },
@@ -429,6 +442,115 @@ describe("mutating tool effect idempotency keys", () => {
         item: expect.objectContaining({ title: "follow up with design" }),
       }),
     );
+  });
+
+  it("appends a remembered fact to the bot's existing memory", async () => {
+    const f = fixture("run-append");
+    f.memoryDocuments.push({
+      id: "doc-1",
+      path: "MEMORY.md",
+      content: "Save trip files to Drive.\n",
+      revision: 2,
+      updatedAt: new Date(0).toISOString(),
+    });
+    f.setCalls([
+      {
+        name: "remember",
+        args: { path: "MEMORY.md", content: "The client is Combient." },
+        executionId: "call_0",
+      },
+    ]);
+
+    await f.run();
+
+    expect(f.memoryCommit).toHaveBeenCalledOnce();
+    expect(f.memoryCommit.mock.calls[0]?.[0]).toMatchObject({
+      path: "MEMORY.md",
+      content: "Save trip files to Drive.\nThe client is Combient.\n",
+      expectedRevision: 2,
+    });
+    expect(f.results[0]).toEqual({ ok: true });
+  });
+
+  it.each(["", "   ", "  MEMORY.md  "])(
+    "normalizes remember path %j before reading and committing",
+    async (path) => {
+      const f = fixture("run-path");
+      f.memoryDocuments.push(
+        { id: "other", path: "other.md", content: "unrelated\n", revision: 7 },
+        { id: "memory", path: "MEMORY.md", content: "existing\n", revision: 2 },
+      );
+      f.setCalls([
+        { name: "remember", args: { path, content: "new fact" }, executionId: "call_0" },
+      ]);
+
+      await f.run();
+
+      expect(f.memoryCommit).toHaveBeenCalledOnce();
+      expect(f.memoryCommit.mock.calls[0]?.[0]).toMatchObject({
+        path: "MEMORY.md",
+        content: "existing\nnew fact\n",
+        expectedRevision: 2,
+      });
+      expect(f.results[0]).toEqual({ ok: true });
+    },
+  );
+
+  it("does not save a fact the bot's memory already holds", async () => {
+    const f = fixture("run-known");
+    f.memoryDocuments.push({
+      id: "doc-1",
+      path: "MEMORY.md",
+      content: "The client is Combient.\n",
+      revision: 1,
+      updatedAt: new Date(0).toISOString(),
+    });
+    f.setCalls([
+      {
+        name: "remember",
+        args: { path: "MEMORY.md", content: "The client is Combient." },
+        executionId: "call_0",
+      },
+    ]);
+
+    await f.run();
+
+    expect(f.memoryCommit).not.toHaveBeenCalled();
+    expect(f.results[0]).toEqual({ ok: true });
+  });
+
+  it("re-reads and appends again when another save wins the race", async () => {
+    const f = fixture("run-race");
+    f.memoryCommit.mockImplementationOnce(async () => {
+      f.memoryDocuments.push({
+        id: "doc-1",
+        path: "MEMORY.md",
+        content: "another writer fact\n",
+        revision: 1,
+        updatedAt: new Date(0).toISOString(),
+      });
+      throw new Error(MEMORY_REVISION_CONFLICT_ERROR);
+    });
+    f.setCalls([
+      {
+        name: "remember",
+        args: { path: "MEMORY.md", content: "durable fact" },
+        executionId: "call_0",
+      },
+    ]);
+
+    await f.run();
+
+    expect(f.memoryCommit).toHaveBeenCalledTimes(2);
+    expect(f.memoryCommit.mock.calls[0]?.[0]).toMatchObject({
+      content: "durable fact\n",
+      expectedRevision: 0,
+    });
+    expect(f.memoryCommit.mock.calls[1]?.[0]).toMatchObject({
+      content: "another writer fact\ndurable fact\n",
+      expectedRevision: 1,
+    });
+    expect(f.results[0]).toEqual({ ok: true });
   });
 
   it("executes the same provider tool-call id on different runs", async () => {
@@ -701,5 +823,22 @@ describe("mutating tool effect idempotency keys", () => {
     expect(f.memoryCommit).not.toHaveBeenCalled();
     expect(f.effects).toHaveLength(1);
     expect(f.results[0]).toEqual({ ok: true, legacy: true });
+  });
+});
+
+describe("add_mcp_server", () => {
+  it("refuses a stdio server this deployment can't run", async () => {
+    const f = fixture();
+    f.setCalls([
+      {
+        name: "add_mcp_server",
+        args: { name: "Files", transport: "stdio", command: "npx" },
+        executionId: "call_0",
+      },
+    ]);
+
+    await f.run();
+
+    expect(f.results[0]).toEqual({ error: "Stdio MCP servers aren't available here" });
   });
 });

@@ -1,7 +1,14 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import type { Bot, Routine } from "@rakazo/contracts";
-import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
+import {
+  activeBotId,
+  captureScreenshot,
+  completeOnboarding,
+  createNamedBot,
+  rpc,
+  signup,
+} from "./helpers";
 
 async function waitForStoredPanel(page: Page, panel: string | null) {
   await expect
@@ -28,7 +35,7 @@ test("reload restores the open, closed and settings rail states", async ({ page 
   await completeOnboarding(page);
   const panel = page.getByTestId("side-panel");
   await expect(panel).toHaveAttribute("data-panel", "closed");
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
   await expect(panel).toHaveAttribute("data-panel", "computer");
   await waitForStoredPanel(page, "computer");
   await page.reload();
@@ -62,6 +69,25 @@ test("reload restores the open, closed and settings rail states", async ({ page 
   await expect(panel).toHaveAttribute("data-panel", "settings");
 });
 
+test("switching chats opens each chat's own panel, closed by default", async ({
+  page,
+}, testInfo) => {
+  await signup(page, `rail-switch-${Date.now()}@rakazo.test`, "password12", "Panel Switch");
+  await completeOnboarding(page);
+  await createNamedBot(page, "Other chat");
+  const panel = page.getByTestId("side-panel");
+  const sidebar = page.locator("aside").first();
+  await expect(panel).toHaveAttribute("data-panel", "closed");
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
+  await expect(panel).toHaveAttribute("data-panel", "computer");
+  await sidebar.getByRole("button", { name: /^Chief/ }).click();
+  await expect(page.getByPlaceholder("Message Chief")).toBeVisible();
+  await expect(panel).toHaveAttribute("data-panel", "closed");
+  await captureScreenshot(page, testInfo, "rail-closed-in-other-chat");
+  await sidebar.getByRole("button", { name: /^Other chat/ }).click();
+  await expect(panel).toHaveAttribute("data-panel", "computer");
+});
+
 test("reload restores the selected routine and scopes preferences to the chat", async ({
   page,
 }, testInfo) => {
@@ -76,7 +102,7 @@ test("reload restores the selected routine and scopes preferences to the chat", 
     timezone: "UTC",
     active: false,
   });
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
   await page.getByRole("button", { name: /Weekly summary/ }).click();
   const name = page.locator("label:has-text('Name') input");
   await expect(name).toHaveValue("Weekly summary");
@@ -142,7 +168,7 @@ test("reload restores the selected routine and scopes preferences to the chat", 
   await waitForStoredPanel(page, "settings");
   await page.reload();
   await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "settings");
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
   await page.getByRole("button", { name: /Weekly summary/ }).click();
   await rpc(page, "routines/remove", { routineId: routine.id });
   await page.reload();

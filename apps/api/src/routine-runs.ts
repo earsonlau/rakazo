@@ -1,5 +1,7 @@
 import { ORPCError } from "@orpc/server";
 import type { Actor, RoutineHistory, RoutineRun, RoutineRunCursor } from "@rakazo/contracts";
+import { ROUTINE_HISTORY_PAGE_SIZE } from "@rakazo/contracts";
+import { runFailureError } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { Prisma } from "@rakazo/db";
 
@@ -8,6 +10,7 @@ export async function listRoutineRuns(
   actor: Actor,
   routineId: string,
   before?: RoutineRunCursor,
+  limit = ROUTINE_HISTORY_PAGE_SIZE,
 ): Promise<RoutineHistory> {
   const routine = await prisma.routine.findFirst({
     where: {
@@ -41,17 +44,18 @@ export async function listRoutineRuns(
       threadId: true,
       thread: { select: { groupId: true } },
       status: true,
+      error: true,
       createdAt: true,
       startedAt: true,
       completedAt: true,
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take: 21,
+    take: limit + 1,
   });
-  const runs = rows.slice(0, 20);
+  const runs = rows.slice(0, limit);
   const last = runs.at(-1);
   const nextCursor =
-    rows.length > 20 && last ? { id: last.id, createdAt: last.createdAt.toISOString() } : null;
+    rows.length > limit && last ? { id: last.id, createdAt: last.createdAt.toISOString() } : null;
   // Routine runs can finish silently. A chat link is offered only when a message exists.
   const messages = runs.length
     ? await prisma.$queryRaw<Array<{ id: string; runId: string; threadId: string }>>(Prisma.sql`
@@ -74,6 +78,7 @@ export async function listRoutineRuns(
       botId: run.botId,
       groupId: run.thread.groupId,
       status: run.status as RoutineRun["status"],
+      error: runFailureError({ type: `run.${run.status}`, payload: { error: run.error } }),
       createdAt: run.createdAt.toISOString(),
       startedAt: run.startedAt?.toISOString() ?? null,
       completedAt: run.completedAt?.toISOString() ?? null,

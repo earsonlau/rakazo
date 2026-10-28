@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { Routine } from "@rakazo/contracts";
 import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
 
-test("Slack message trigger uses the mounted messaging provider and persists", async ({
+test("Slack message and GitHub event triggers persist their settings", async ({
   page,
 }, testInfo) => {
   await page.route("**/rpc/messaging/status", (route) =>
@@ -14,11 +14,20 @@ test("Slack message trigger uses the mounted messaging provider and persists", a
     }),
   );
   const stamp = Date.now();
-  await signup(page, `routine-slack-${stamp}@rakazo.test`, "password12", "Slack Routine");
+  await signup(page, `routine-triggers-${stamp}@rakazo.test`, "password12", "Trigger Routine");
   await completeOnboarding(page);
   const botId = activeBotId(page);
+  const savedRoutine = async (name: string) => {
+    const saved = page.waitForResponse(
+      (response) => response.url().includes("/rpc/routines/create") && response.ok(),
+    );
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await saved;
+    const routines = await rpc<Routine[]>(page, "routines/list", { botId });
+    return routines.find((routine) => routine.name === name);
+  };
 
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
   await page.getByRole("button", { name: "Create Routine" }).click();
   await page.getByPlaceholder("Name this routine").fill("Triage Slack updates");
   await page
@@ -33,31 +42,15 @@ test("Slack message trigger uses the mounted messaging provider and persists", a
     panel.getByText("Runs when this bot receives a verified message from this provider."),
   ).toBeVisible();
 
-  const saved = page.waitForResponse(
-    (response) => response.url().includes("/rpc/routines/create") && response.ok(),
-  );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await saved;
-  const [routine] = await rpc<Routine[]>(page, "routines/list", { botId });
-  expect(routine).toMatchObject({
-    name: "Triage Slack updates",
+  expect(await savedRoutine("Triage Slack updates")).toMatchObject({
     crons: [],
     webhookEnabled: false,
     githubEnabled: false,
     messageProvider: "slack",
   });
   await captureScreenshot(page, testInfo, "routine-slack-message");
-});
 
-test("GitHub event trigger exposes signed delivery settings and persists", async ({
-  page,
-}, testInfo) => {
-  const stamp = Date.now();
-  await signup(page, `routine-github-${stamp}@rakazo.test`, "password12", "GitHub Routine");
-  await completeOnboarding(page);
-  const botId = activeBotId(page);
-
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Back" }).click();
   await page.getByRole("button", { name: "Create Routine" }).click();
   await page.getByPlaceholder("Name this routine").fill("Review repository events");
   await page
@@ -66,20 +59,11 @@ test("GitHub event trigger exposes signed delivery settings and persists", async
   await page.getByRole("button", { name: "Add trigger" }).click();
   await page.getByRole("menuitem", { name: "Git event", exact: true }).click();
 
-  await expect(
-    page.getByTestId("side-panel").getByText("Git event", { exact: true }),
-  ).toBeVisible();
+  await expect(panel.getByText("Git event", { exact: true })).toBeVisible();
   await expect(page.getByText(new RegExp(`/api/v1/bots/${botId}/github$`))).toBeVisible();
   await expect(page.getByText("X-Hub-Signature-256: sha256=…", { exact: true })).toBeVisible();
 
-  const saved = page.waitForResponse(
-    (response) => response.url().includes("/rpc/routines/create") && response.ok(),
-  );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await saved;
-  const [routine] = await rpc<Routine[]>(page, "routines/list", { botId });
-  expect(routine).toMatchObject({
-    name: "Review repository events",
+  expect(await savedRoutine("Review repository events")).toMatchObject({
     crons: [],
     webhookEnabled: false,
     githubEnabled: true,
@@ -99,10 +83,10 @@ test("Korean webhook routine keeps technical field labels in English", async ({
   await page.getByRole("button", { name: "Settings" }).click();
   const settings = page.getByTestId("user-settings");
   await settings.getByTestId("ui-locale-select").click();
-  await settings.getByRole("option", { name: "한국어", exact: true }).click();
+  await page.getByRole("option", { name: "한국어", exact: true }).click();
   await page.getByRole("button", { name: "계정 설정 닫기" }).click();
 
-  await page.getByTitle("Agent 컴퓨터").click();
+  await page.getByRole("button", { name: "Agent 컴퓨터", exact: true }).click();
   await page.getByRole("button", { name: "자동 실행 만들기" }).click();
   await page.getByPlaceholder("이 루틴의 이름을 정하세요").fill("한국어 웹훅 확인");
   await page
@@ -122,8 +106,9 @@ test("routine test-run completes and survives reload", async ({ page }, testInfo
   const stamp = Date.now();
   await signup(page, `routine-${stamp}@rakazo.test`, "password12", "Routine");
   await completeOnboarding(page);
+  const botId = activeBotId(page);
 
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
   await expect(page.getByRole("button", { name: "Test run" })).toHaveCount(0);
   await page.getByRole("button", { name: "Create Routine" }).click();
   await page.locator("label:has-text('Name') input").fill("Daily verification");
@@ -155,84 +140,96 @@ test("routine test-run completes and survives reload", async ({ page }, testInfo
 
   await page.reload();
   await expect(page.getByText(/routine-run-now-ok/i).first()).toBeVisible();
-  await page.getByTitle("Agent computer").click();
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
   await expect(page.getByRole("button", { name: /Daily verification/ })).toContainText(
     "Weekdays at 9:00 AM",
   );
   await page.getByRole("button", { name: /Daily verification/ }).click();
   const history = page.getByTestId("routine-run-history");
   await expect(history.getByTestId("routine-run-row")).toHaveCount(1);
-  await expect(history.getByText("Done", { exact: true })).toBeVisible();
+  const created = (await rpc<Routine[]>(page, "routines/list", { botId })).find(
+    (item) => item.name === "Daily verification",
+  );
+  const ran = await rpc<{ runs: Array<{ status: string }> }>(page, "routines/history", {
+    routineId: created?.id,
+  });
+  expect(ran.runs.map((run) => run.status)).toEqual(["completed"]);
   await expect(history.getByText("No runs yet")).toHaveCount(0);
-  await expect(history.getByRole("link", { name: "View chat" })).toBeVisible();
-  await expect(history.getByRole("button", { name: "Run history" })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  );
-  await history.getByRole("button", { name: "Run history" }).click();
-  await expect(history.getByRole("button", { name: "Run history" })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  );
-  await expect(history.getByTestId("routine-run-row")).toHaveCount(1);
   await captureScreenshot(page, testInfo, "36-routine-run-history");
-  await history.getByRole("link", { name: "View chat" }).click();
+  await history.getByTestId("routine-run-row").getByRole("link").click();
   await expect(page.getByText(/routine-run-now-ok/i).first()).toBeVisible();
   await captureScreenshot(page, testInfo, "35-routine-run-persisted");
 });
 
-test("routine history expands from the latest run and pages older executions", async ({
-  page,
-}, testInfo) => {
-  const stamp = Date.now();
-  await signup(page, `routine-history-${stamp}@rakazo.test`, "password12", "Routine History");
+test("an unchanged routine completes without adding a chat reply", async ({ page }, testInfo) => {
+  await signup(page, `routine-silent-${Date.now()}@rakazo.test`, "password12", "Quiet Routine");
   await completeOnboarding(page);
   const botId = activeBotId(page);
-  await rpc<Routine>(page, "routines/create", {
+  const routine = await rpc<Routine>(page, "routines/create", {
     botId,
-    name: "Recent checks",
-    prompt: "Check status",
+    name: "Quiet release check",
+    prompt: "silent routine fixture",
     crons: ["0 9 * * *"],
     timezone: "UTC",
     active: false,
     notify: true,
   });
-  const row = (id: string, status: string, hour: number) => ({
-    id,
-    botId,
-    groupId: null,
-    status,
-    messageId: null,
-    createdAt: `2026-01-02T${hour}:00:00Z`,
-    startedAt: `2026-01-02T${hour}:00:00Z`,
-    completedAt: `2026-01-02T${hour}:01:22Z`,
+  const { runId } = await rpc<{ runId: string }>(page, "routines/testRun", {
+    routineId: routine.id,
   });
-  await page.route("**/rpc/routines/history", async (route) => {
-    const input = route.request().postDataJSON() as { json: { before?: unknown } };
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        json: input.json.before
-          ? { runs: [row("oldest", "cancelled", 10)], nextCursor: null }
-          : {
-              runs: [row("latest", "completed", 12), row("older", "failed", 11)],
-              nextCursor: { id: "older", createdAt: "2026-01-02T11:00:00Z" },
-            },
-      }),
+  await expect
+    .poll(async () => {
+      const history = await rpc<{ runs: Array<{ id: string; status: string }> }>(
+        page,
+        "routines/history",
+        { routineId: routine.id },
+      );
+      return history.runs.find((run) => run.id === runId)?.status;
+    })
+    .toBe("completed");
+  const snapshot = await rpc<{
+    messages: Array<{ runId: string | null; blocks: Array<{ kind: string }> }>;
+  }>(page, "threads/get", { botId });
+  expect(
+    snapshot.messages
+      .filter((message) => message.runId === runId)
+      .flatMap((message) => message.blocks)
+      .filter((block) => block.kind !== "steps"),
+  ).toEqual([]);
+  const transcript = page.getByTestId("transcript");
+  await expect(transcript.getByText("NO_RESPONSE", { exact: false })).toHaveCount(0);
+  await expect(transcript.getByText("Checking for changes.", { exact: false })).toHaveCount(0);
+  await page.getByRole("button", { name: "Agent computer", exact: true }).click();
+  await page.getByRole("button", { name: /Quiet release check/ }).click();
+  await expect(page.getByTestId("routine-run-history").getByTestId("routine-run-row")).toHaveCount(
+    1,
+  );
+  await captureScreenshot(page, testInfo, "routine-unchanged-silent");
+
+  // A sixth run puts the first one past the latest five.
+  for (let count = 2; count <= 6; count += 1) {
+    const { runId: next } = await rpc<{ runId: string }>(page, "routines/testRun", {
+      routineId: routine.id,
     });
-  });
-  await page.getByTitle("Agent computer").click();
-  await page.getByRole("button", { name: /Recent checks/ }).click();
+    await expect
+      .poll(async () => {
+        const history = await rpc<{ runs: Array<{ id: string; status: string }> }>(
+          page,
+          "routines/history",
+          { routineId: routine.id },
+        );
+        return history.runs.find((run) => run.id === next)?.status;
+      })
+      .toBe("completed");
+  }
+  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: /Quiet release check/ }).click();
   const history = page.getByTestId("routine-run-history");
-  await expect(history.getByTestId("routine-run-row")).toHaveCount(1);
-  await history.getByRole("button", { name: "Run history" }).click();
-  await expect(history.getByTestId("routine-run-row")).toHaveCount(2);
+  await expect(history.getByTestId("routine-run-row")).toHaveCount(5);
+  await expect(history.getByRole("button", { name: "Load older runs" })).toBeVisible();
+  await captureScreenshot(page, testInfo, "routine-run-history-older-runs");
   await history.getByRole("button", { name: "Load older runs" }).click();
-  await expect(history.getByTestId("routine-run-row")).toHaveCount(3);
-  await expect(history.getByText("Failed", { exact: true })).toBeVisible();
-  await expect(history.getByText("Cancelled", { exact: true })).toBeVisible();
+  await expect(history.getByTestId("routine-run-row")).toHaveCount(6);
   await expect(history.getByRole("button", { name: "Load older runs" })).toHaveCount(0);
-  await captureScreenshot(page, testInfo, "routine-history-expanded");
-  await history.getByRole("button", { name: "Run history" }).click();
-  await expect(history.getByTestId("routine-run-row")).toHaveCount(1);
+  await captureScreenshot(page, testInfo, "routine-run-history-expanded");
 });

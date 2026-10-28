@@ -42,6 +42,25 @@ describe("loadEnv", () => {
       expect(loadEnv({ ...base, TICKET_BOARD_ENABLED: value }).ticketBoardEnabled).toBe(false);
     expect(loadEnv({ ...base, TICKET_BOARD_ENABLED: "true" }).ticketBoardEnabled).toBe(true);
   });
+  it("loads operator menu links and refuses to start on a bad value", () => {
+    expect(loadEnv(base).navLinks).toEqual([]);
+    expect(
+      loadEnv({
+        ...base,
+        RAKAZO_NAV_LINKS: '[{"id":"clients","label":"Clients","path":"/ext/clients/"}]',
+      }).navLinks,
+    ).toEqual([{ id: "clients", label: "Clients", path: "/ext/clients/", trusted: false }]);
+    expect(() =>
+      loadEnv({ ...base, RAKAZO_NAV_LINKS: '[{"id":"x","label":"X","path":"/api/me"}]' }),
+    ).toThrow("RAKAZO_NAV_LINKS");
+  });
+  it("keeps Crisp chat off unless a valid website ID is set", () => {
+    expect(loadEnv(base).crispWebsiteId).toBeNull();
+    expect(
+      loadEnv({ ...base, CRISP_WEBSITE_ID: "c2c27ea6-4fdb-4350-a9fc-4b5b052dc5ec" }).crispWebsiteId,
+    ).toBe("c2c27ea6-4fdb-4350-a9fc-4b5b052dc5ec");
+    expect(() => loadEnv({ ...base, CRISP_WEBSITE_ID: "nope" })).toThrow("CRISP_WEBSITE_ID");
+  });
   it("defaults the product path to Pi, Docker, and Graphile Worker", () => {
     const env = loadEnv(base);
     expect(env.agentRuntime).toBe("pi");
@@ -121,17 +140,17 @@ describe("loadEnv", () => {
     });
   });
 
-  it("loads provider-specific Box configuration", () => {
+  it("loads provider-specific Boat configuration", () => {
     const env = loadEnv({
       ...base,
-      SANDBOX_PROVIDER: "box",
-      BOX_API_KEY: "test-box-key",
-      BOX_API_URL: "https://box.test/api/v1",
+      SANDBOX_PROVIDER: "boat",
+      BOAT_API_KEY: "test-boat-key",
+      BOAT_API_URL: "https://boat.test/api/v1",
     });
     expect(env).toMatchObject({
-      sandboxProvider: "box",
-      boxApiKey: "test-box-key",
-      boxApiUrl: "https://box.test/api/v1",
+      sandboxProvider: "boat",
+      boatApiKey: "test-boat-key",
+      boatApiUrl: "https://boat.test/api/v1",
     });
   });
 
@@ -174,6 +193,25 @@ describe("loadEnv", () => {
     expect(env.apiHost).toBe("0.0.0.0");
   });
 
+  it("encrypts content on servers by default and fails startup on an invalid switch", () => {
+    const production = {
+      DATABASE_URL: base.DATABASE_URL,
+      NODE_ENV: "production",
+      BETTER_AUTH_SECRET: "prod-auth-secret-with-enough-length",
+      ENCRYPTION_KEY: "prod-encryption-key-with-enough-length",
+      SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
+      SANDBOX_PROVIDER: "e2b",
+    };
+    expect(loadEnv(production).contentEncryption).toBe(true);
+    expect(loadEnv({ ...production, CONTENT_ENCRYPTION: "off" }).contentEncryption).toBe(false);
+    expect(
+      loadEnv({ DATABASE_URL: base.DATABASE_URL, NODE_ENV: "development" }).contentEncryption,
+    ).toBe(false);
+    expect(() => loadEnv({ ...production, CONTENT_ENCRYPTION: "maybe" })).toThrow(
+      /CONTENT_ENCRYPTION must be "on" or "off"/,
+    );
+  });
+
   it("falls back to none in production when Docker has no supervisor token", () => {
     const env = loadEnv({
       DATABASE_URL: base.DATABASE_URL,
@@ -207,16 +245,21 @@ describe("loadEnv", () => {
     expect(loadEnv({ ...base, RAKAZO_GIT_SHA: "abc1234" }).gitSha).toBe("abc1234");
   });
 
-  it("loads optional updater sidecar wiring without requiring the token at boot", () => {
-    expect(loadEnv(base).updaterUrl).toBeUndefined();
-    expect(loadEnv(base).updaterToken).toBeUndefined();
-    const env = loadEnv({
-      ...base,
-      RAKAZO_UPDATER_URL: " http://updater:7092 ",
-      RAKAZO_UPDATER_TOKEN: " fake-review-updater-token-000000000000 ",
-    });
-    expect(env.updaterUrl).toBe("http://updater:7092");
-    expect(env.updaterToken).toBe("fake-review-updater-token-000000000000");
+  it("loads per-client minimum builds and refuses a malformed one", () => {
+    expect(loadEnv(base).minimumClientBuilds).toEqual({});
+    expect(
+      loadEnv({ ...base, RAKAZO_MIN_CLIENT_BUILD: "web=20261022093015" }).minimumClientBuilds,
+    ).toEqual({ web: "20261022093015" });
+    expect(() => loadEnv({ ...base, RAKAZO_MIN_CLIENT_BUILD: "latest" })).toThrow(
+      /RAKAZO_MIN_CLIENT_BUILD/,
+    );
+  });
+
+  it("loads an optional Expo access token", () => {
+    expect(loadEnv(base).expoAccessToken).toBeUndefined();
+    expect(loadEnv({ ...base, EXPO_ACCESS_TOKEN: " fake-expo-token " }).expoAccessToken).toBe(
+      "fake-expo-token",
+    );
   });
 
   it("loads SMTP configuration and keeps the email emulator out of production", () => {
@@ -244,6 +287,17 @@ describe("loadEnv", () => {
       }).emailEmulator,
     ).toBe(false);
     expect(loadEnv({ ...base, NODE_ENV: "development" }).nodeEnv).toBe("development");
+  });
+
+  it("loads generic email API connection settings", () => {
+    expect(
+      loadEnv({ ...base, EMAIL_PROVIDER: " resend ", EMAIL_API_KEY: " fake-key " }),
+    ).toMatchObject({
+      emailProvider: "resend",
+      emailApiKey: "fake-key",
+    });
+    expect(loadEnv(base).emailProvider).toBeUndefined();
+    expect(loadEnv(base).emailApiKey).toBeUndefined();
   });
 
   it("defaults the remote MCP private-endpoint escape to off", () => {
@@ -281,6 +335,15 @@ describe("OIDC environment", () => {
   it("guards password-only lockout without contacting discovery", () => {
     expect(() => loadEnv({ ...base, AUTH_PASSWORD_ENABLED: "false" })).toThrow(/requires OIDC/);
     expect(loadEnv({ ...base, ...oidc, AUTH_PASSWORD_ENABLED: "false" }).passwordAuth).toBe(false);
+  });
+  it("leaves the breached password check off unless explicitly enabled", () => {
+    expect(loadEnv(base).breachedPasswordCheck).toBe(false);
+    expect(
+      loadEnv({ ...base, AUTH_BREACHED_PASSWORD_CHECK_ENABLED: "true" }).breachedPasswordCheck,
+    ).toBe(true);
+    expect(() => loadEnv({ ...base, AUTH_BREACHED_PASSWORD_CHECK_ENABLED: "yes" })).toThrow(
+      "AUTH_BREACHED_PASSWORD_CHECK_ENABLED must be true or false",
+    );
   });
   it("defaults to SSO with no policy bypass", () => {
     expect(loadEnv({ ...base, ...oidc }).oidc).toMatchObject({

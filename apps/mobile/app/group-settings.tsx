@@ -1,17 +1,21 @@
-import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN } from "@rakazo/contracts";
+import { GROUP_MEMBER_MAX, GROUP_MEMBER_MIN, GROUP_NAME_MAX_LENGTH } from "@rakazo/contracts";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, Text, TextInput } from "react-native";
+import { ScrollView, Text, TextInput } from "react-native";
 import { BotMemberPicker } from "../components/bot-member-picker";
 import { glassHeaderOptions } from "../components/glass-title";
 import { NativeActionButton } from "../components/native-action-button";
 import type { MobileBot, MobileGroup } from "../lib/api";
 import { rpc } from "../lib/api";
+import { notifyArchivedChatsChanged } from "../lib/archived-chats";
+import { confirmDeleteGroup } from "../lib/bot-lifecycle";
 import { useI18n } from "../lib/i18n";
 import { native, useMobileTokens } from "../lib/native";
+import { useSideInsets } from "../lib/side-insets";
 import { errorText } from "../lib/user-error";
 
 export default function GroupSettingsScreen() {
+  const sideInsets = useSideInsets();
   const { t } = useI18n();
   const tokens = useMobileTokens();
   const router = useRouter();
@@ -26,10 +30,8 @@ export default function GroupSettingsScreen() {
   useEffect(() => {
     if (!groupId) return;
     void Promise.all([
-      rpc<MobileGroup[]>("groups/list").then(
-        (groups) => groups.find((row) => row.id === groupId) ?? null,
-      ),
-      rpc<MobileBot[]>("bots/list"),
+      rpc("groups/list").then((groups) => groups.find((row) => row.id === groupId) ?? null),
+      rpc("bots/list"),
     ])
       .then(([nextGroup, nextBots]) => {
         if (!nextGroup) throw new Error(t("Group not found"));
@@ -61,35 +63,31 @@ export default function GroupSettingsScreen() {
 
   function remove() {
     if (!groupId || !group) return;
-    Alert.alert(group.name, t("Delete this group? Bots and their solo threads are kept."), [
-      { text: t("Cancel"), style: "cancel" },
-      {
-        text: t("Delete"),
-        style: "destructive",
-        onPress: () =>
-          void rpc("groups/remove", { groupId })
-            .then(() => router.replace("/"))
-            .catch((err) =>
-              Alert.alert(t("Could not delete group"), errorText(err, t("Try again."))),
-            ),
-      },
-    ]);
+    confirmDeleteGroup({ id: groupId, name: group.name }, () => {
+      notifyArchivedChatsChanged();
+      router.replace("/");
+    });
   }
 
   return (
     <>
       <Stack.Screen options={glassHeaderOptions(t("Group settings"))} />
       <ScrollView
-        style={{ flex: 1, backgroundColor: tokens.background }}
+        style={[{ flex: 1, backgroundColor: tokens.background }, sideInsets]}
         contentContainerStyle={{ padding: 24 }}
+        automaticallyAdjustKeyboardInsets
         contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <Text style={{ color: tokens.mutedForeground, fontSize: 14 }}>{t("Name")}</Text>
         <TextInput
           value={name}
           onChangeText={setName}
+          maxLength={GROUP_NAME_MAX_LENGTH}
           placeholder={t("Group name")}
           placeholderTextColor={tokens.mutedForeground}
+          returnKeyType="done"
           style={{
             marginTop: 8,
             backgroundColor: native.fill,
@@ -105,6 +103,9 @@ export default function GroupSettingsScreen() {
             bots={bots}
             selected={selected}
             onChange={setSelected}
+            onOpenBot={(bot) =>
+              router.push({ pathname: "/bot-profile", params: { botId: bot.id, name: bot.name } })
+            }
             disabled={pending}
           />
         ) : null}

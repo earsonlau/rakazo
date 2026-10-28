@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  SLASH_ACTIONS,
-  serializeComposerPrompt,
-  truncateSlashDescription,
-} from "./composer-slash.js";
+import { serializeComposerPrompt, truncateSlashDescription } from "./composer-slash.js";
 
 describe("serializeComposerPrompt", () => {
   it("returns draft when no skill or mentions", () => {
@@ -37,14 +33,22 @@ describe("truncateSlashDescription", () => {
     const long = "a".repeat(80);
     expect(truncateSlashDescription(long, 20)).toBe(`${"a".repeat(19)}…`);
   });
-});
 
-describe("SLASH_ACTIONS", () => {
-  it("exposes chat and account destinations", () => {
-    expect(SLASH_ACTIONS.map((action) => action.id)).toEqual([
-      "chat-settings",
-      "settings-general",
-      "settings-usage",
-    ]);
+  it("keeps emoji intact at the default truncation boundary", () => {
+    const prefix = "a".repeat(70);
+    expect(truncateSlashDescription(`${prefix}😀bc`)).toBe(`${prefix}😀…`);
+  });
+
+  it("leaves text at the code point limit unchanged", () => {
+    const text = `${"a".repeat(70)}😀b`;
+    expect(truncateSlashDescription(text)).toBe(text);
+  });
+
+  it("counts emoji as one code point with a custom limit", () => {
+    expect(truncateSlashDescription("😀😀😀😀😀", 4)).toBe("😀😀😀…");
+  });
+
+  it("normalizes whitespace and trims before the ellipsis", () => {
+    expect(truncateSlashDescription("  😀\n  a\t bc  ", 5)).toBe("😀 a…");
   });
 });

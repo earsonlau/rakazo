@@ -17,7 +17,6 @@ export interface MemoryProviderSettingsFormProps {
 export interface MemoryProviderSettingsRegistration {
   id: string;
   name: string;
-  description: string;
   SettingsForm: ComponentType<MemoryProviderSettingsFormProps>;
   connectedLabel: (config: SpaceMemoryConfig) => string;
 }
@@ -26,30 +25,33 @@ export const MEMORY_PROVIDER_SETTINGS: readonly MemoryProviderSettingsRegistrati
   {
     id: "supermemory",
     name: "Supermemory",
-    description: "Add semantic recall alongside native MEMORY.md memory.",
     SettingsForm: SupermemorySettingsForm,
     connectedLabel: (config) =>
-      config.settings.mode === "cloud" ? "Supermemory Cloud" : `Local · ${config.settings.baseUrl}`,
+      config.settings.mode === "cloud"
+        ? "Supermemory Cloud"
+        : `Self-hosted (${config.settings.baseUrl})`,
   },
   {
     id: "serenity",
     name: "Serenity",
-    description: "Hosted or self-hosted Serenity brain for durable memory.",
     SettingsForm: SerenitySettingsForm,
     connectedLabel: (config) => {
       const label = config.settings.brainLabel?.trim();
       const endpoint = config.settings.endpoint ?? "Serenity";
       const mode = config.settings.allowWrites === "true" ? "read/write" : "recall only";
-      return label ? `Serenity · ${label} · ${mode}` : `Serenity · ${endpoint} · ${mode}`;
+      return `${label || endpoint}, ${mode}`;
     },
   },
   {
     id: "honcho",
     name: "Honcho",
-    description: "",
     SettingsForm: HonchoSettingsForm,
-    connectedLabel: (config) =>
-      config.settings.workspaceId ? `Honcho · ${config.settings.workspaceId}` : "Honcho Cloud",
+    connectedLabel: (config) => {
+      const { mode, baseUrl, workspaceId } = config.settings;
+      if (mode === "local")
+        return [`Self-hosted (${baseUrl})`, workspaceId].filter(Boolean).join(", ");
+      return workspaceId ? `Honcho Cloud (${workspaceId})` : "Honcho Cloud";
+    },
   },
 ];
 

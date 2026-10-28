@@ -21,7 +21,7 @@ interface ComposeService {
 const repoRoot = path.resolve(import.meta.dirname, "../../..");
 const composeFile = path.resolve(repoRoot, "infra/compose/docker-compose.images.yml");
 const publishWorkflowFile = path.resolve(repoRoot, ".github/workflows/publish-server-image.yml");
-const compose = parse(readFileSync(composeFile, "utf8")) as {
+const compose = parse(readFileSync(composeFile, "utf8"), { merge: true }) as {
   services: Record<string, ComposeService>;
 };
 const publishWorkflow = parse(readFileSync(publishWorkflowFile, "utf8")) as {
@@ -36,7 +36,7 @@ const publishWorkflow = parse(readFileSync(publishWorkflowFile, "utf8")) as {
   };
 };
 
-const appServices = ["api", "worker", "web", "supervisor"] as const;
+const appServices = ["api", "worker", "web", "supervisor", "migrate"] as const;
 const FIRST_PARTY_IMAGE = /ghcr\.io\/elie222\/rakazo\/([a-z0-9][a-z0-9._-]*)/g;
 
 function firstPartyImageNames(value: unknown): string[] {
@@ -55,6 +55,7 @@ describe("the images compose file", () => {
       "api",
       "computer",
       "data-init",
+      "migrate",
       "postgres",
       "supervisor",
       "web",
@@ -126,6 +127,8 @@ describe("the images compose file", () => {
     for (const name of ["postgres", ...appServices]) {
       expect(compose.services[name]?.networks?.length).toBeGreaterThan(0);
     }
+    // Migrations only reach the database, never the internet.
+    expect(compose.services.migrate?.networks).toEqual(["data"]);
   });
 
   it("never builds from a checkout", () => {
@@ -134,9 +137,13 @@ describe("the images compose file", () => {
     }
   });
 
-  it("loads secrets from a colocated .env", () => {
-    expect(compose.services.api?.env_file).toEqual([".env"]);
-    expect(compose.services.worker?.env_file).toEqual([".env"]);
+  it("passes secrets from the --env-file by name instead of loading the whole file", () => {
+    for (const service of ["api", "worker"]) {
+      expect(compose.services[service]?.env_file).toBeUndefined();
+      // A key with no value is filled from the --env-file when set and left unset otherwise.
+      expect(compose.services[service]?.environment).toHaveProperty("ENCRYPTION_KEY", null);
+      expect(compose.services[service]?.environment).toHaveProperty("OPENROUTER_API_KEY", null);
+    }
   });
 
   it("defaults API and worker to Docker computers via the supervisor", () => {

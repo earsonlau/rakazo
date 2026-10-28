@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  appContract,
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_INSTRUCTIONS_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
@@ -15,7 +14,6 @@ import {
   ModelConnectInputSchema,
   ModelOAuthBeginSchema,
   normalizeCreateBotProfile,
-  ProductEventType,
   parseModelContextWindow,
   parseModelMaxImagesPerPrompt,
   parseModelMaxTokens,
@@ -28,6 +26,15 @@ import {
 } from "./index.js";
 
 describe("contracts", () => {
+  it("leaves bot management to the database default and preserves explicit choices", () => {
+    expect(CreateBotInput.parse({ name: "New bot" }).fleetManagement).toBeUndefined();
+    for (const fleetManagement of [false, true]) {
+      expect(CreateBotInput.parse({ name: "New bot", fleetManagement }).fleetManagement).toBe(
+        fleetManagement,
+      );
+    }
+  });
+
   it("bounds the count and length of compatible model selections", () => {
     const input = {
       provider: "openai-compatible",
@@ -115,6 +122,21 @@ describe("contracts", () => {
     expect(valid.success).toBe(true);
   });
 
+  it("validates Workers AI account routing without requiring a gateway", () => {
+    const provider = "cloudflare-workers-ai";
+    expect(
+      ModelConnectInputSchema.safeParse({
+        provider,
+        accountId: "account-fixture",
+        apiKey: "fixture-key",
+      }).success,
+    ).toBe(true);
+    expect(ModelConnectInputSchema.safeParse({ provider, maxTokens: 2048 }).success).toBe(true);
+    for (const accountId of ["", "../account", "account/other", "a".repeat(65)]) {
+      expect(ModelConnectInputSchema.safeParse({ provider, accountId }).success).toBe(false);
+    }
+  });
+
   it("validates each Cloudflare routing id and allows an update to send only one", () => {
     const provider = CLOUDFLARE_AI_GATEWAY_PROVIDER_ID;
     expect(
@@ -200,6 +222,14 @@ describe("contracts", () => {
     );
   });
 
+  it("keeps a note on a step and still reads steps saved without one", () => {
+    const steps = [
+      { label: "Read file", count: 1, note: "The meeting is with Anna." },
+      { label: "Save", count: 1 },
+    ];
+    expect(MessageBlock.parse({ kind: "steps", steps })).toEqual({ kind: "steps", steps });
+  });
+
   it("limits reactions to persisted non-channel messages", () => {
     expect(
       canReactToThreadMessage({ id: "message-1", blocks: [{ kind: "text", text: "hi" }] }),
@@ -228,6 +258,15 @@ describe("contracts", () => {
     const parsed = CreateBotInput.parse({ name: "Chief" });
     expect(parsed.title).toBe("");
     expect(parsed.notifyOnFinish).toBe(true);
+    expect(parsed.avatarFamily).toBeUndefined();
+  });
+
+  it("accepts an organic avatar family from 0 to 9 when creating a bot", () => {
+    expect(CreateBotInput.parse({ name: "Chief", avatarFamily: 0 }).avatarFamily).toBe(0);
+    expect(CreateBotInput.parse({ name: "Chief", avatarFamily: 9 }).avatarFamily).toBe(9);
+    for (const avatarFamily of [-1, 10, 2.5, "3"]) {
+      expect(CreateBotInput.safeParse({ name: "Chief", avatarFamily }).success).toBe(false);
+    }
   });
 
   it("normalizes bot creation fields without losing the longer instruction copy", () => {
@@ -344,34 +383,6 @@ describe("contracts", () => {
     ).toBe(false);
   });
 
-  it("exposes the product rpc surface", () => {
-    expect(appContract.models.beginOAuth).toBeTruthy();
-    expect(appContract.bootstrap).toBeTruthy();
-    expect(appContract.models.completeOAuth).toBeTruthy();
-    expect(appContract.bots.create).toBeTruthy();
-    expect(appContract.bots.reorder).toBeTruthy();
-    expect(appContract.bots.archive).toBeTruthy();
-    expect(appContract.bots.restore).toBeTruthy();
-    expect(appContract.bots.remove).toBeTruthy();
-    expect(appContract.spaces.rename).toBeTruthy();
-    expect(appContract.spaces.remove).toBeTruthy();
-    expect(appContract.botSections.list).toBeTruthy();
-    expect(appContract.botSections.create).toBeTruthy();
-    expect(appContract.botSections.update).toBeTruthy();
-    expect(appContract.threads.subscribe).toBeTruthy();
-    expect(appContract.threads.clear).toBeTruthy();
-    expect(appContract.voice.prepare).toBeTruthy();
-    expect(appContract.externalConversations.updatePolicy).toBeTruthy();
-    expect(appContract.agentSecrets.list).toBeTruthy();
-    expect(appContract.agentSecrets.put).toBeTruthy();
-    expect(appContract.agentSecrets.remove).toBeTruthy();
-    expect(appContract.notifications.registerPush).toBeTruthy();
-    expect(ProductEventType.options).toContain("thread.message.created");
-    expect(ProductEventType.options).toContain("thread.cleared");
-    expect(ProductEventType.options).toContain("thread.subagent");
-    expect(ProductEventType.options).toContain("bot.spawned");
-  });
-
   it("requires a distinct, non-empty bot order", () => {
     expect(ReorderBotsInput.safeParse({ botIds: ["bot-2", "bot-1"] }).success).toBe(true);
     expect(ReorderBotsInput.safeParse({ botIds: [] }).success).toBe(false);
@@ -446,6 +457,7 @@ describe("contracts", () => {
         status: run.status,
         trigger: run.trigger,
         notificationsEnabled: true,
+        agentMessage: null,
         promptSnippet: "Review the report",
         updatedAt: "2026-08-26T00:00:01.000Z",
       }).success,
@@ -530,5 +542,27 @@ describe("contracts", () => {
         data: rows.slice(0, 2_501),
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("compatible connection headers", () => {
+  const input = {
+    provider: "openai-compatible",
+    baseUrl: "https://example.invalid/v1",
+    modelId: "test",
+  };
+  it("retains trimmed header names", () => {
+    expect(
+      ModelConnectInputSchema.parse({ ...input, headers: { " x-session ": "secret" } }),
+    ).toHaveProperty("headers", { "x-session": "secret" });
+  });
+});
+
+it("retains legacy unknown-field stripping for model connections", () => {
+  expect(
+    ModelConnectInputSchema.parse({ provider: "test", apiKey: "fake-key", futureOption: true }),
+  ).toEqual({
+    provider: "test",
+    apiKey: "fake-key",
   });
 });

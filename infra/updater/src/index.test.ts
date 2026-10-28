@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import type { ServerUpdateRun } from "@rakazo/contracts";
 import { afterEach, describe, expect, it } from "vitest";
+import type { UpdaterCommandRunner } from "./index.js";
 import {
   commandEnvironment,
   createUpdaterApp,
   restoreCheckoutArgv,
   runHostCommand,
-  type UpdaterCommandRunner,
 } from "./index.js";
 import { resolveUpdaterConfig } from "./updater-logic.js";
 
@@ -41,11 +41,11 @@ async function deployment(env = "RAKAZO_IMAGE_TAG=v1.0.0\nRAKAZO_IMAGE_TAG_PREVI
 }
 
 function ok(output = "") {
-  return { ok: true, exitCode: 0, output };
+  return { ok: true, exitCode: 0, stdout: output, output };
 }
 
 function failed(output: string) {
-  return { ok: false, exitCode: 1, output };
+  return { ok: false, exitCode: 1, stdout: "", output };
 }
 
 function request(app: ReturnType<typeof createUpdaterApp>, pathname: string, body?: unknown) {
@@ -366,6 +366,24 @@ describe("updater orchestration", () => {
     expect(await readFile(envFile, "utf8")).toMatch(/FAKE_SETTING=kept/);
   });
 
+  it("adds a missing app database password before recreating, so newer Compose files start", async () => {
+    const fixture = await deployment("POSTGRES_PASSWORD=kept\nRAKAZO_IMAGE_TAG=v1.0.0\n");
+    const envFile = path.join(fixture.deployDir, ".env");
+    let envAtRecreate = "";
+    const run: UpdaterCommandRunner = async (command, args) => {
+      if (command === "git") return ok(`${targetCommit}\trefs/tags/v1.1.0\n`);
+      if (args.includes("up")) envAtRecreate = await readFile(envFile, "utf8");
+      return ok();
+    };
+    const response = await request(createUpdaterApp(fixture.config, { run }), "/apply", {
+      repoUrl: "https://github.com/elie222/rakazo",
+      branch: "main",
+    });
+    await expect(response.json()).resolves.toMatchObject({ ok: true });
+    expect(envAtRecreate).toMatch(/^POSTGRES_APP_PASSWORD=[0-9a-f]{32}$/m);
+    expect(envAtRecreate).toMatch(/^POSTGRES_PASSWORD=kept$/m);
+  });
+
   it("refuses to replace a symlinked deployment environment", async () => {
     const fixture = await deployment();
     const envFile = path.join(fixture.deployDir, ".env");
@@ -517,6 +535,7 @@ describe("runHostCommand", () => {
     expect(refused).toEqual({
       ok: false,
       exitCode: null,
+      stdout: "",
       output: "Refusing to run an unexpected program.",
     });
     await expect(readFile(marker, "utf8")).rejects.toThrow();
@@ -525,6 +544,7 @@ describe("runHostCommand", () => {
     expect(nul).toEqual({
       ok: false,
       exitCode: null,
+      stdout: "",
       output: "Refusing to run an unexpected program.",
     });
   });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   BackgroundJob,
+  BackgroundJobExecution,
   BackgroundJobHandlers,
   BackgroundJobName,
   BackgroundJobPayloads,
@@ -23,7 +24,17 @@ const payloadSchemas = {
   "call.expire": z.object({ threadId: z.string().min(1), callId: z.string().min(1) }),
   "history.compact": z.object({ threadId: z.string().min(1) }),
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
+  "messaging.credential-cleanup": z.object({
+    installationId: z.string().min(1),
+    ref: z.string().min(1),
+  }),
   "cloud_agent.poll": z.object({ agentId: z.string().min(1) }),
+  "purchase.poll": z.object({ purchaseId: z.string().min(1) }),
+  "push.receipt": z.object({
+    userId: z.string().min(1),
+    ticketId: z.string().min(1),
+    tokenDigest: z.string().min(1),
+  }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
@@ -37,10 +48,15 @@ export async function dispatchBackgroundJob(
   handlers: BackgroundJobHandlers,
   name: string,
   payload: unknown,
+  execution?: BackgroundJobExecution,
 ): Promise<void> {
   const job = parseBackgroundJob(name, payload);
-  const handler = handlers[job.name] as (payload: typeof job.payload) => Promise<void>;
-  await handler(job.payload);
+  const handler = handlers[job.name] as (
+    payload: typeof job.payload,
+    execution?: BackgroundJobExecution,
+  ) => Promise<void>;
+  if (execution) await handler(job.payload, execution);
+  else await handler(job.payload);
 }
 
 export function runJobKey(runId: string): string {
@@ -162,6 +178,14 @@ export function historyCompactJob(threadId: string): BackgroundJob {
   };
 }
 
+/** A few tries ride out an Expo outage well inside the day it keeps receipts. */
+export function pushReceiptJob(
+  payload: BackgroundJobPayloads["push.receipt"],
+  availableAt: Date,
+): BackgroundJob {
+  return { name: "push.receipt", payload, availableAt, maxAttempts: 8 };
+}
+
 export function cloudAgentPollJobKey(agentId: string): string {
   return `cloud_agent.poll:${agentId}`;
 }
@@ -174,6 +198,15 @@ export function cloudAgentPollJob(
     name: "cloud_agent.poll",
     payload,
     replaceKey: cloudAgentPollJobKey(payload.agentId),
+    ...(availableAt ? { availableAt } : {}),
+  };
+}
+
+export function purchasePollJob(purchaseId: string, availableAt?: Date): BackgroundJob {
+  return {
+    name: "purchase.poll",
+    payload: { purchaseId },
+    replaceKey: `purchase.poll:${purchaseId}`,
     ...(availableAt ? { availableAt } : {}),
   };
 }

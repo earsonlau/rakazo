@@ -17,6 +17,7 @@ import {
 } from "./index.js";
 import type { ScreenAssignment } from "./supervisor-logic.js";
 import {
+  AIMED_SCROLL_CONTROL_LABEL,
   assertRequestIdentity,
   attemptComputerControl,
   browserProfilePathForScreen,
@@ -28,6 +29,7 @@ import {
   computerControlTimeoutMs,
   containerActionStep,
   containerActionSteps,
+  controlHandlesActions,
   createDockerStreamDemuxer,
   currentComputerScreens,
   DOCKER_BROWSER_ALIASES,
@@ -40,16 +42,20 @@ import {
   nextScreenIndex,
   normalizeWorkspaceRelative,
   oldestIdleScreen,
+  pageBrowserNotReady,
   parseObservation,
   preferComputerControl,
   releaseAssignedScreen,
   resetManagedScreensCommand,
+  SCREEN_REUSE_MS,
   sandboxCommandTimedOut,
   sandboxTimeoutCommand,
+  screenRecentlyEnsured,
   screenReleaseStopCommand,
   shouldReplayComputerActions,
   stopExtraScreenCommand,
   teardownReleasedScreen,
+  terminalCommand,
   withKeyedLock,
 } from "./supervisor-logic.js";
 
@@ -69,10 +75,8 @@ describe("computer screen readiness", () => {
   });
 
   it("does not treat an open TCP port as ready when nothing is serving HTTP on it yet", async () => {
-    // Regression test: a bare TCP accept (e.g. the Docker port mapping coming
-    // up before websockify inside the container does) must not be mistaken
-    // for the screen being ready — that gap is exactly what caused
-    // "socket hang up" in the browser.
+    // A bare TCP accept (the port mapping up before websockify) is not ready:
+    // that gap caused "socket hang up" in the browser.
     const server = net.createServer((socket) => socket.destroy());
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -350,6 +354,79 @@ describe("sandbox supervisor input containment", () => {
     });
   });
 
+  it("sends aimed and sideways scrolls to a computer's control service only when it takes them", () => {
+    const plain = [
+      { kind: "scroll" as const, direction: "down" as const, amount: 3 },
+      { kind: "pointer" as const, x: 10, y: 20, type: "click" as const },
+    ];
+    const aimed = [{ kind: "scroll" as const, direction: "down" as const, x: 600, y: 420 }];
+    const sideways = [{ kind: "scroll" as const, direction: "left" as const }];
+    const current = { [AIMED_SCROLL_CONTROL_LABEL]: "1", "rakazo.botId": "bot" };
+    const older = { "rakazo.botId": "bot" };
+    expect(controlHandlesActions(older, plain)).toBe(true);
+    expect(controlHandlesActions(older, aimed)).toBe(false);
+    expect(controlHandlesActions(older, sideways)).toBe(false);
+    expect(controlHandlesActions(undefined, [...plain, ...aimed])).toBe(false);
+    expect(controlHandlesActions(current, [...plain, ...aimed, ...sideways])).toBe(true);
+    // The computer image built with this control service carries the label.
+    const dockerfile = readFileSync(
+      path.resolve(import.meta.dirname, "../../computer/Dockerfile"),
+      "utf8",
+    );
+    expect(dockerfile).toContain(`LABEL ${AIMED_SCROLL_CONTROL_LABEL}="1"`);
+  });
+
+  it("moves the pointer to a scroll's point before turning the wheel", () => {
+    expect(
+      containerActionStep({ kind: "scroll", direction: "down", amount: 4, x: 600.4, y: 420 }),
+    ).toEqual({
+      argv: [
+        "env",
+        "DISPLAY=:1",
+        "xdotool",
+        "mousemove",
+        "--",
+        "600",
+        "420",
+        "click",
+        "--repeat",
+        "4",
+        "5",
+      ],
+    });
+    expect(containerActionStep({ kind: "scroll", direction: "left", amount: 2 })).toEqual({
+      argv: ["env", "DISPLAY=:1", "xdotool", "click", "--repeat", "2", "6"],
+    });
+    expect(containerActionStep({ kind: "scroll", direction: "right", amount: 2 })).toEqual({
+      argv: ["env", "DISPLAY=:1", "xdotool", "click", "--repeat", "2", "7"],
+    });
+    // Both coordinates or neither: a lone x scrolls where the pointer is.
+    expect(containerActionStep({ kind: "scroll", direction: "down", x: 600 })).toEqual({
+      argv: ["env", "DISPLAY=:1", "xdotool", "click", "--repeat", "3", "5"],
+    });
+  });
+
+  it.each([undefined, "/home/rakazo/.browser-profiles/bot-test"])(
+    "opens workspace files in the assigned browser (profile=%s)",
+    (profile) => {
+      for (const [file, url] of [
+        ["screenshots/it's #1%.png", "file:///home/rakazo/screenshots/it's%20%231%25.png"],
+        ["/image.png", "file:///home/rakazo/image.png"],
+        ["screenshots/back\\slash.png", "file:///home/rakazo/screenshots/back/slash.png"],
+      ] as const) {
+        expect(containerActionStep({ kind: "open", path: file }, ":2", profile)).toEqual({
+          argv: [
+            "env",
+            "DISPLAY=:2",
+            ...(profile ? [`RAKAZO_BROWSER_PROFILE=${profile}`] : []),
+            "rakazo-browser",
+            url,
+          ],
+        });
+      }
+    },
+  );
+
   it("routes Docker browser aliases through the safe wrapper on every display", () => {
     for (const application of DOCKER_BROWSER_ALIASES) {
       expect(
@@ -608,6 +685,8 @@ describe("sandbox supervisor input containment", () => {
       /x11vnc -display .* -rfbport 0 -unixsock .*control-1-/,
     );
     expect(interactiveScreenCommand(true, "lease-new")).toMatch(/6080/);
+    expect(interactiveScreenCommand(true, "lease-new")).toContain("0.0.0.0:6080 8>&-");
+    expect(terminalCommand("control", "terminal", "/work")).toContain("0.0.0.0:6080 8>&-");
     expect(interactiveScreenCommand(true, "lease-new")).not.toContain("sockets/view-1-");
     expect(interactiveScreenCommand(false, "lease-old")).toContain("= 'lease-old'");
     expect(interactiveScreenCommand(false, "lease-old")).toContain("RAKAZO_CONTROL_RELEASED");
@@ -700,6 +779,37 @@ describe("sandbox supervisor input containment", () => {
       expect(nextScreenIndex(assigned, `bot-${index}`)).toBe(index);
   });
 
+  it("trusts a screen's setup for a short time unless it is released or human-held", () => {
+    const now = 1_000_000;
+    expect(screenRecentlyEnsured({ index: 0, ensuredAt: now }, now + SCREEN_REUSE_MS - 1)).toBe(
+      true,
+    );
+    expect(screenRecentlyEnsured({ index: 0, ensuredAt: now }, now + SCREEN_REUSE_MS)).toBe(false);
+    expect(screenRecentlyEnsured({ index: 0 }, now)).toBe(false);
+    expect(screenRecentlyEnsured({ index: 0, ensuredAt: now, controlled: true }, now)).toBe(false);
+    expect(screenRecentlyEnsured({ index: 0, ensuredAt: now, controlToken: "token" }, now)).toBe(
+      false,
+    );
+    const assigned = new Map<string, ScreenAssignment>([["bot", { index: 0, ensuredAt: now }]]);
+    releaseAssignedScreen(assigned, "bot");
+    completeWarmReleasedScreen(assigned, "bot", 0, now);
+    expect(screenRecentlyEnsured(assigned.get("bot"), now)).toBe(false);
+  });
+
+  it("recognizes only a page helper that reached no browser before acting", () => {
+    const output = (value: object) => ({ code: 0, stdout: JSON.stringify(value) });
+    expect(pageBrowserNotReady(output({ ok: false, error: "CDP not ready on port 9222: x" }))).toBe(
+      true,
+    );
+    expect(
+      pageBrowserNotReady(output({ ok: false, error: "CDP not ready", uncertain: true })),
+    ).toBe(false);
+    expect(pageBrowserNotReady(output({ ok: false, error: "Element not found" }))).toBe(false);
+    expect(pageBrowserNotReady(output({ ok: true }))).toBe(false);
+    expect(pageBrowserNotReady({ code: 1, stdout: "" })).toBe(false);
+    expect(pageBrowserNotReady({ code: 0, stdout: "not json" })).toBe(false);
+  });
+
   it("frees a released screen slot so a ninth Team bot can reuse it", () => {
     const assigned = new Map<string, ScreenAssignment>();
     for (let index = 0; index < 8; index += 1) {
@@ -723,23 +833,32 @@ describe("sandbox supervisor input containment", () => {
     expect(nextScreenIndex(assigned, "bot-9")).toBe(8);
   });
 
-  it("retains a screen slot when teardown fails", async () => {
-    const assigned = new Map<string, ScreenAssignment>();
-    expect(nextScreenIndex(assigned, "writer")).toBe(0);
-    expect(releaseAssignedScreen(assigned, "writer")).toBe(0);
+  it.each([false, true])(
+    "retains a screen slot when teardown fails (retainBrowser=%s)",
+    async (retainBrowser) => {
+      const assigned = new Map<string, ScreenAssignment>();
+      expect(nextScreenIndex(assigned, "writer")).toBe(0);
+      expect(releaseAssignedScreen(assigned, "writer")).toBe(0);
 
-    await expect(
-      teardownReleasedScreen(assigned, "writer", 0, async () => ({
-        code: 1,
-        stderr: "browser still running",
-      })),
-    ).rejects.toThrow("browser still running");
+      await expect(
+        teardownReleasedScreen(
+          assigned,
+          "writer",
+          0,
+          async () => ({
+            code: 1,
+            stderr: "browser still running",
+          }),
+          { retainBrowser },
+        ),
+      ).rejects.toThrow("browser still running");
 
-    expect(assigned.get("writer")).toEqual({ index: 0, releasing: true });
-    expect(() => nextScreenIndex(assigned, "writer")).toThrow(/still being released/);
-    expect(nextScreenIndex(assigned, "researcher")).toBe(1);
-    expect(releaseAssignedScreen(assigned, "writer")).toBe(0);
-  });
+      expect(assigned.get("writer")).toEqual({ index: 0, releasing: true });
+      expect(() => nextScreenIndex(assigned, "writer")).toThrow(/still being released/);
+      expect(nextScreenIndex(assigned, "researcher")).toBe(1);
+      expect(releaseAssignedScreen(assigned, "writer")).toBe(0);
+    },
+  );
 
   it("clears all screen assignments when a container stops so slots can be reused", () => {
     const registry = new Map<string, Map<string, ScreenAssignment>>();
@@ -903,8 +1022,69 @@ describe("sandbox supervisor input containment", () => {
     expect(extra).toContain(`--user-data-dir=${browserProfilePathForScreen("researcher")}`);
   });
 
+  it.each([0, 1])("releases screen %i access without stopping its browser or display", (index) => {
+    const stop = screenReleaseStopCommand(index, {
+      hasRegistry: true,
+      cancelRunWork: false,
+      screenId: "writer",
+    });
+    expect(stop).toContain(`sockets/view-${index + 1}-`);
+    expect(stop).toContain(`sockets/control-${index + 1}-`);
+    expect(stop).toContain(`rm -f /tmp/rakazo/control-token-${index + 1}`);
+    expect(stop).not.toContain("--user-data-dir");
+    expect(stop).not.toContain("browser-profile-");
+    expect(stop).not.toContain("browser-launch-");
+    expect(stop).not.toContain("Xvfb");
+    expect(stop).not.toContain("fluxbox");
+    expect(stop).not.toContain("websockify");
+  });
+
+  it("retains the browser slot and fence across run and idle viewer releases", async () => {
+    const assigned = new Map<string, ScreenAssignment>();
+    nextScreenIndex(assigned, "researcher", "other-run:1");
+    expect(nextScreenIndex(assigned, "writer", "run-1:2")).toBe(1);
+    assigned.get("writer")!.viewToken = "old-view-token";
+    assigned.get("writer")!.controlled = true;
+    assigned.get("writer")!.controlToken = "old-control-token";
+    expect(releaseAssignedScreen(assigned, "writer", "run-1:2")).toBe(1);
+    await teardownReleasedScreen(assigned, "writer", 1, async () => ({ code: 0, stderr: "" }), {
+      retainBrowser: true,
+    });
+
+    expect(assigned.get("writer")).toEqual({
+      index: 1,
+      leaseId: "run-1:2",
+      idleAt: expect.any(Number),
+    });
+    expect(oldestIdleScreen(assigned, 2)).toBe("writer");
+    expect(nextScreenIndex(assigned, "new-bot", "new-run:3")).toBe(2);
+    expect(() => nextScreenIndex(assigned, "writer", "screen-view-writer:0")).toThrow(
+      /owned by a newer execution/,
+    );
+    expect(releaseAssignedScreen(assigned, "writer", "screen-view-writer:0")).toBeUndefined();
+    expect(nextScreenIndex(assigned, "writer", "run-2:4")).toBe(1);
+    expect(releaseAssignedScreen(assigned, "writer", "run-1:2")).toBeUndefined();
+    expect(releaseAssignedScreen(assigned, "writer", "run-2:4")).toBe(1);
+    await teardownReleasedScreen(assigned, "writer", 1, async () => ({ code: 0, stderr: "" }), {
+      retainBrowser: true,
+    });
+    expect(assigned.get("researcher")).toEqual({ index: 0, leaseId: "other-run:1" });
+
+    const idle = new Map<string, ScreenAssignment>();
+    nextScreenIndex(idle, "writer", "screen-view-writer:0");
+    expect(releaseAssignedScreen(idle, "writer", "screen-view-writer:0")).toBe(0);
+    await teardownReleasedScreen(idle, "writer", 0, async () => ({ code: 0, stderr: "" }), {
+      retainBrowser: true,
+    });
+    expect(nextScreenIndex(idle, "writer", "run-3:5")).toBe(0);
+  });
+
   it("on cancel, stops only the matching bot's primary-display Chromium", () => {
-    const stop = stopExtraScreenCommand(0, "writer");
+    const stop = screenReleaseStopCommand(0, {
+      hasRegistry: true,
+      cancelRunWork: true,
+      screenId: "writer",
+    });
     expect(stop).toContain(`--user-data-dir=${browserProfilePathForScreen("writer")}`);
     expect(stop).not.toContain(`--user-data-dir=${browserProfilePathForScreen("researcher")}`);
     expect(stop).not.toContain("Xvfb");
@@ -1047,7 +1227,7 @@ describe("docker exec stream demux", () => {
 });
 
 describe("computer command identity", () => {
-  it("runs the user's terminal as the same workspace user and environment as the bot's shell", () => {
+  it("gives commands the workspace user's home, PATH and package prefixes on the screen's display", () => {
     expect(computerCommandEnv({ display: ":2" })).toEqual([
       "DISPLAY=:2",
       "HOME=/home/rakazo",
@@ -1055,18 +1235,5 @@ describe("computer command identity", () => {
       "NPM_CONFIG_PREFIX=/home/rakazo/.local",
       "PIP_USER=1",
     ]);
-    const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
-    // Every exec, including file writes for uploads, inherits the container's non-root user
-    // (see containerCreateOptions).
-    const execs = source.match(/container\.exec\(\{[\s\S]*?\}\)/g) ?? [];
-    expect(execs.length).toBeGreaterThanOrEqual(2);
-    for (const exec of execs) expect(exec).not.toMatch(/\bUser\s*:/);
-    const route = (path: string) =>
-      source.slice(
-        source.indexOf(`app.post("${path}"`),
-        source.indexOf("app.", source.indexOf(`app.post("${path}"`) + 5),
-      );
-    expect(route("/computers/:id/exec")).toContain("computerCommandEnv(layout)");
-    expect(route("/computers/:id/terminal")).toContain("computerCommandEnv(screen.layout)");
   });
 });

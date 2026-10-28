@@ -9,14 +9,14 @@ import { computerTestSandbox } from "../computer-test-config.js";
 import { runProcess } from "./process.js";
 
 async function main() {
-  const { values } = parseArgs({ options: { sandbox: { type: "string", default: "box" } } });
+  const { values } = parseArgs({ options: { sandbox: { type: "string", default: "boat" } } });
   const sandbox = computerTestSandbox(values.sandbox);
   loadRootEnv();
   for (const key of [sandbox.apiKeyEnv, "OPENROUTER_API_KEY", "COMPUTER_E2E_MODEL"]) {
     if (!process.env[key]) throw new Error(`${key} is required`);
   }
   const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-computer-e2e-run-"));
-  const database = await new PostgreSqlContainer("postgres:16-alpine").start();
+  const database = await new PostgreSqlContainer("postgres:18-alpine").start();
   const env = {
     ...process.env,
     DATABASE_URL: database.getConnectionUri(),

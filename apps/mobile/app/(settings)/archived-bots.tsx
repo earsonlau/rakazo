@@ -4,16 +4,22 @@ import { ActivityIndicator, Alert, ScrollView, Text, View } from "react-native";
 import { ArchivedBotList } from "../../components/archived-bot-list";
 import { NativeActionButton } from "../../components/native-action-button";
 import type { MobileBot, MobileGroup } from "../../lib/api";
-import { rpc } from "../../lib/api";
-import { loadArchivedChats } from "../../lib/archived-chats";
-import { confirmDeleteBot, restoreArchivedBot } from "../../lib/bot-lifecycle";
+import { captureApiRequestContext, rpc, selectSpace } from "../../lib/api";
+import {
+  loadAllArchivedChats as loadArchivedChats,
+  notifyArchivedChatsChanged,
+} from "../../lib/archived-chats";
+import { confirmDeleteBot } from "../../lib/bot-lifecycle";
 import { useFloatingHeaderInset } from "../../lib/floating-header";
 import { useI18n } from "../../lib/i18n";
 import { useMobileTokens } from "../../lib/native";
-import { closeSettingsSheet } from "../../lib/settings-sheet";
+import { addToSearchInbox, searchInboxSession } from "../../lib/search-inbox";
+import { openFromSettingsSheet } from "../../lib/settings-sheet";
+import { useSideInsets } from "../../lib/side-insets";
 import { errorText } from "../../lib/user-error";
 
 export default function ArchivedBots() {
+  const sideInsets = useSideInsets();
   const { t } = useI18n();
   const router = useRouter();
   const tokens = useMobileTokens();
@@ -55,16 +61,18 @@ export default function ArchivedBots() {
     }, [loadChats]),
   );
 
-  // Every restore and delete settles here. In the visit it started in, the row goes and a list
-  // load still running (it may predate the change) is restarted rather than dropped, so the
-  // other list isn't lost. After leaving, a later open visit reloads instead.
+  // Every restore and delete settles here. In the visit it started in, the row goes and both
+  // lists reload: a group restores with its bots, and a bot's restore or deletion can bring its
+  // group back or remove it. A load still running may predate the change, so it's restarted.
+  // After leaving, a later open visit reloads instead.
   function removed(generation: number, removeRow: () => void) {
+    notifyArchivedChatsChanged();
     if (generation !== focusGeneration.current) {
       if (focused.current) void loadChats();
       return;
     }
     removeRow();
-    if (listRequest.current) void loadChats();
+    void loadChats();
   }
 
   async function mutate(request: () => Promise<unknown>, removeRow: () => void, failure: string) {
@@ -83,9 +91,26 @@ export default function ArchivedBots() {
     }
   }
 
+  async function requestOptions(spaceId: string | undefined) {
+    const context = await captureApiRequestContext();
+    return {
+      skipSpaceAuthRecovery: true,
+      requestContext: {
+        ...context,
+        headers: { ...context.headers, ...(spaceId ? { "x-rakazo-space-id": spaceId } : {}) },
+      },
+    };
+  }
+
+  async function inSpace(spaceId: string | undefined) {
+    if (spaceId && !(await selectSpace(spaceId))) throw new Error(t("Could not switch spaces"));
+  }
+
   function restoreGroup(group: MobileGroup) {
     void mutate(
-      () => rpc("groups/restore", { groupId: group.id }),
+      async () => {
+        return rpc("groups/restore", { groupId: group.id }, await requestOptions(group.spaceId));
+      },
       () => setGroups((current) => current.filter((item) => item.id !== group.id)),
       t("Could not update chat"),
     );
@@ -96,16 +121,31 @@ export default function ArchivedBots() {
   }
 
   function restore(bot: MobileBot) {
-    void mutate(() => restoreArchivedBot(bot.id), withoutBot(bot.id), t("Could not restore bot"));
+    void mutate(
+      async () => {
+        await rpc("bots/restore", { botId: bot.id }, await requestOptions(bot.spaceId));
+      },
+      withoutBot(bot.id),
+      t("Could not restore bot"),
+    );
   }
 
-  function remove(bot: MobileBot) {
+  async function remove(bot: MobileBot) {
     if (pending) return;
     const generation = focusGeneration.current;
+    let options: Awaited<ReturnType<typeof requestOptions>>;
+    try {
+      options = await requestOptions(bot.spaceId);
+    } catch (cause) {
+      Alert.alert(t("Could not delete bot"), errorText(cause, t("Try again.")));
+      return;
+    }
+    if (generation !== focusGeneration.current) return;
     confirmDeleteBot(
       bot,
       () => removed(generation, withoutBot(bot.id)),
       () => generation === focusGeneration.current,
+      options.requestContext,
     );
   }
 
@@ -113,13 +153,15 @@ export default function ArchivedBots() {
     if (pending) return;
     setPending(true);
     const generation = focusGeneration.current;
+    const askedIn = searchInboxSession();
     try {
+      await inSpace(bot.spaceId);
       await rpc("threads/get", { botId: bot.id });
       // Left or dismissed while loading, even if back since: a later sheet must not close for it.
       if (generation !== focusGeneration.current) return;
+      addToSearchInbox({ kind: "bot", bot }, askedIn);
       // The thread is not a settings page, so it opens on the root stack once the sheet closes.
-      closeSettingsSheet();
-      router.push({
+      openFromSettingsSheet(router, {
         pathname: "/thread",
         params: { botId: bot.id, name: bot.name, readOnly: "1" },
       });
@@ -150,7 +192,7 @@ export default function ArchivedBots() {
   if (!bots?.length && !groups.length)
     return (
       <ScrollView
-        style={{ flex: 1, backgroundColor: tokens.background }}
+        style={[{ flex: 1, backgroundColor: tokens.background }, sideInsets]}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={{ padding: 24, gap: 12 }}
       >

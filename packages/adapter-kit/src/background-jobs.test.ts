@@ -22,7 +22,10 @@ function handlers(): BackgroundJobHandlers {
     "call.expire": vi.fn(async () => undefined),
     "history.compact": vi.fn(async () => undefined),
     "messaging.deliver": vi.fn(async () => undefined),
+    "messaging.credential-cleanup": vi.fn(async () => undefined),
     "cloud_agent.poll": vi.fn(async () => undefined),
+    "purchase.poll": vi.fn(async () => undefined),
+    "push.receipt": vi.fn(async () => undefined),
   };
 }
 
@@ -41,6 +44,16 @@ describe("background job contracts", () => {
       payload: {},
       replaceKey: "messaging.deliver:drain",
     });
+  });
+
+  it("validates and dispatches retired messaging credential cleanup", async () => {
+    const target = handlers();
+    const payload = { installationId: "install-a", ref: "encrypted-reference" };
+    await dispatchBackgroundJob(target, "messaging.credential-cleanup", payload);
+    expect(target["messaging.credential-cleanup"]).toHaveBeenCalledWith(payload);
+    expect(() =>
+      parseBackgroundJob("messaging.credential-cleanup", { ref: "encrypted-reference" }),
+    ).toThrow();
   });
 
   it("validates and dispatches a typed job", async () => {
@@ -84,18 +97,6 @@ describe("background job contracts", () => {
         leaseId: "",
       }),
     ).toThrow();
-  });
-
-  it("validates and dispatches a control-expiry job", async () => {
-    const target = handlers();
-    await dispatchBackgroundJob(target, "computer.control-expire", {
-      computerId: "computer-1",
-      leaseId: "lease-1",
-    });
-    expect(target["computer.control-expire"]).toHaveBeenCalledWith({
-      computerId: "computer-1",
-      leaseId: "lease-1",
-    });
   });
 });
 

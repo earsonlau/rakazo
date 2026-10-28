@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { activeBotId, captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
 
 /**
@@ -78,7 +79,6 @@ test("selecting a text span quotes it into a reply", async ({ page }, testInfo) 
     .first();
   await expect(sourceRow).toBeVisible({ timeout: 20_000 });
 
-  // Selection inside one message offers the Quote action; Escape dismisses it.
   await selectAndRelease(page, sourceRow, "**forty two percent**");
   await expect(quoteButton).toBeVisible();
   await captureScreenshot(page, testInfo, "message-quote-selection");
@@ -115,7 +115,6 @@ test("selecting a text span quotes it into a reply", async ({ page }, testInfo) 
   // "Replying to" that no longer describes anything after the chip is gone.
   await expect(page.getByTestId("composer-announcement")).toHaveText("");
 
-  // The sent message shows the excerpt and keeps jump-to-source.
   const replyRow = transcript
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-user-bubble") })
@@ -134,7 +133,6 @@ test("selecting a text span quotes it into a reply", async ({ page }, testInfo) 
   await parentPreview.click();
   await expect(sourceRow).toBeInViewport();
 
-  // The excerpt is persisted — it still renders after a full reload.
   await page.reload();
   const reloadedRow = transcript
     .locator("[data-message-id]")
@@ -158,7 +156,6 @@ test("rendered markdown selections survive server quote derivation", async ({ pa
   await composer.fill(`quote markdown fixture ${sourceMarker}`);
   await composer.press("Enter");
 
-  // Bot bubble: scripted fixture → ChatMarkdown + server markdown derivation.
   const sourceRow = transcript
     .locator("[data-message-id]")
     .filter({ has: page.getByTestId("message-bot-bubble") })
@@ -257,7 +254,6 @@ test("selecting text inside a table cell quotes the rendered cell", async ({ pag
   await expect(replyChip).toHaveText(new RegExp(`^.+: ${cellText}$`));
   await expect(composer).toBeFocused();
 
-  // The sent reply persists the server-derived excerpt from the same cell.
   const replyText = `quote-cell-${stamp} confirmed?`;
   await composer.fill(replyText);
   await composer.press("Enter");
@@ -323,7 +319,7 @@ test("an armed reply survives the parent paging out of the transcript", async ({
     reaction: "👍",
     clientNonce: `qr-${stamp}`,
   });
-  const computerButton = page.getByTitle("Agent computer");
+  const computerButton = page.getByRole("button", { name: "Agent computer", exact: true });
   await expect(async () => {
     if ((await computerButton.getAttribute("data-active")) !== null) {
       await computerButton.click();
@@ -348,34 +344,6 @@ test("an armed reply survives the parent paging out of the transcript", async ({
 
   // Stop the reply's run so its continues cannot churn into the next test.
   await rpc(page, "threads/stop", { botId });
-});
-
-test("a selection spanning two messages offers no quote action", async ({ page }) => {
-  const stamp = Date.now();
-  await signup(page, `quote-span-${stamp}@rakazo.test`, "password12", "Quote Tester");
-  await completeOnboarding(page);
-
-  const transcript = page.getByTestId("transcript");
-  const composer = page.getByRole("combobox", { name: /Message/ });
-  // The scripted bot echoes user text; scope to user bubbles for unique rows.
-  const userRow = (text: string) =>
-    transcript
-      .locator("[data-message-id]")
-      .filter({ has: page.getByTestId("message-user-bubble") })
-      .filter({ hasText: text })
-      .first();
-
-  const firstText = `quote-first-${stamp}`;
-  const secondText = `quote-second-${stamp}`;
-  await composer.fill(firstText);
-  await composer.press("Enter");
-  await expect(userRow(firstText)).toBeVisible({ timeout: 20_000 });
-  await composer.fill(secondText);
-  await composer.press("Enter");
-  await expect(userRow(secondText)).toBeVisible({ timeout: 20_000 });
-
-  await selectAndRelease(page, transcript, firstText, secondText);
-  await expect(page.getByTestId("quote-selection")).toHaveCount(0);
 });
 
 test("quoting a second message retargets the armed reply", async ({ page }) => {

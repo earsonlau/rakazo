@@ -1,8 +1,14 @@
-import type { AccountSecurity, AvatarStyle } from "@rakazo/contracts";
+import { MenuView } from "@expo/ui/community/menu";
+import type { AccountSecurity, UsageSummary } from "@rakazo/contracts";
+import { accountDisplay, displayName } from "@rakazo/core";
+import * as Notifications from "expo-notifications";
+import type { Href } from "expo-router";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  AppState,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,11 +21,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppMark } from "../../components/app-mark";
-import { useAvatarStyle } from "../../components/avatar-style";
-import { BotAvatar } from "../../components/bot-avatar";
+import { ApprovalModeRow, ApprovalRulesRow } from "../../components/approval-settings-rows";
+import { NameDialog } from "../../components/name-dialog";
 import { NativeActionButton } from "../../components/native-action-button";
 import { NativeSegmentedControl } from "../../components/native-segmented-control";
-import { NativeSymbol } from "../../components/native-symbol";
 import {
   SettingsGroup,
   SettingsLabel,
@@ -27,16 +32,19 @@ import {
   SettingsSwitch,
   useStackedSettings,
 } from "../../components/settings-group";
+import { createAccountNameEditor } from "../../lib/account-name-editor";
 import type { MobileMe } from "../../lib/api";
 import {
   currentApiBase,
   deleteAccount,
   fetchAccountSecurity,
   loadSessionToken,
+  passwordResetCapabilities,
   requestAccountDeletionCode,
   rpc,
   selectedSpaceId,
   signOut,
+  updateAccountName,
 } from "../../lib/api";
 import { formatUpdateLabel, getAppVersionInfo } from "../../lib/app-version";
 import {
@@ -44,21 +52,32 @@ import {
   mobileTokens,
   setAppearancePreference,
 } from "../../lib/appearance";
+import { useApprovalSettings } from "../../lib/approval-settings";
 import { archivedChatCounts, loadArchivedChats } from "../../lib/archived-chats";
 import { replaceWithSignIn } from "../../lib/auth-routing";
 import { promptAccountDeletion } from "../../lib/delete-account-prompt";
-import { useI18n } from "../../lib/i18n";
+import { dateLocaleForUi, useI18n } from "../../lib/i18n";
 import type { LiveNotificationSettings } from "../../lib/live-notifications";
 import {
   canPostPromotedNotifications,
   DEFAULT_LIVE_NOTIFICATION_SETTINGS,
   getLiveNotificationSettings,
+  hasLiveUpdateSettings,
   openLiveNotificationSettings,
   openPromotedNotificationSettings,
   setLiveNotificationSettings,
 } from "../../lib/live-notifications";
-import { native, useThemedStyles } from "../../lib/native";
+import { native, useResolvedAppearance, useThemedStyles } from "../../lib/native";
+import type { MobilePasskey } from "../../lib/passkey";
+import {
+  addPasskey,
+  deletePasskey,
+  listPasskeys,
+  passkeysAvailable,
+  renamePasskey,
+} from "../../lib/passkey";
 import { registerPushToken } from "../../lib/push";
+import { createQueuedSave } from "../../lib/queued-save";
 import {
   getCachedRemoteImagesEnabled,
   setRemoteImagesPreference,
@@ -69,16 +88,47 @@ import {
   setResponseStreamingPreference,
   subscribeResponseStreaming,
 } from "../../lib/response-streaming";
+import { promptSectionName } from "../../lib/section-name-prompt";
+import { isSettingsLink, openFromSettingsSheet } from "../../lib/settings-sheet";
+import { ACCOUNT_SETTINGS } from "../../lib/settings-target";
+import { useSideInsets } from "../../lib/side-insets";
 import { continueWithSso } from "../../lib/sso";
 import { UI_LOCALE_LABELS } from "../../lib/ui-locale";
 import { errorText } from "../../lib/user-error";
 
-/** Render account settings, including the entry point for voice configuration. */
 export default function Account() {
+  const sideInsets = useSideInsets();
   const { t, locale } = useI18n();
   const router = useRouter();
   const { focus } = useLocalSearchParams<{ focus?: string }>();
   const [me, setMe] = useState<MobileMe | null>(null);
+  const account = accountDisplay(me ?? {}, t("Your account"));
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [namePending, setNamePending] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const currentName = account.label === me?.email ? "" : displayName(me?.name, "");
+
+  const nameSaving = useRef(false);
+  const nameSaveVersion = useRef(0);
+  const { saveName, editName, closeNameDialog } = createAccountNameEditor({
+    currentName,
+    pending: nameSaving,
+    saveVersion: nameSaveVersion,
+    Platform,
+    Alert,
+    t,
+    errorText,
+    updateAccountName,
+    refresh: () => rpc("me"),
+    onSaved: (name) => setMe((current) => (current ? { ...current, name } : current)),
+    onRefreshed: setMe,
+    setNameDraft,
+    setNamePending,
+    setNameError,
+    setNameDialogOpen,
+  });
+
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [security, setSecurity] = useState<AccountSecurity | null>(null);
   const canChangePassword = security?.hasPassword && security.passwordChangeEnabled !== false;
@@ -91,26 +141,36 @@ export default function Account() {
     (security?.hasPassword
       ? !deletePassword
       : !ssoReauthenticated && (!deletionCodeSent || !deletePassword.trim()));
-  const [avatarPending, setAvatarPending] = useState(false);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<LiveNotificationSettings>(
     DEFAULT_LIVE_NOTIFICATION_SETTINGS,
   );
   const [notificationsReady, setNotificationsReady] = useState(Platform.OS !== "android");
-  const [notificationPending, setNotificationPending] = useState(false);
+  const notificationQueue = useRef<ReturnType<
+    typeof createQueuedSave<LiveNotificationSettings>
+  > | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<string | null>(null);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [passkeys, setPasskeys] = useState<MobilePasskey[] | null>(null);
+  const [passkeyPending, setPasskeyPending] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [passkeyLoadError, setPasskeyLoadError] = useState<string | null>(null);
+  // A failed load keeps the section, with Add and a retry, instead of hiding it.
+  const loadPasskeys = useCallback(async () => {
+    setPasskeyLoadError(null);
+    try {
+      setPasskeys(await listPasskeys());
+    } catch (err) {
+      setPasskeys((current) => current ?? []);
+      setPasskeyLoadError(errorText(err, t("Could not continue")));
+    }
+  }, [t]);
+  const colorScheme = useResolvedAppearance();
   const [archivedCount, setArchivedCount] = useState(0);
   // A list that fails to refresh keeps its last count, so a passing error doesn't hide the row.
   const archivedCounts = useRef({ bots: 0, groups: 0 });
-  const [usage, setUsage] = useState<{
-    runs: number;
-    inputTokens: number | null;
-    outputTokens: number | null;
-    totalTokens?: number | null;
-  } | null>(null);
-  const { avatarStyle, updateAvatarStyle } = useAvatarStyle();
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const appearance = getCachedAppearancePreference();
   const streamReplies = useSyncExternalStore(
     subscribeResponseStreaming,
@@ -129,17 +189,26 @@ export default function Account() {
   const versionInfo = getAppVersionInfo();
   const updateLabel = formatUpdateLabel(versionInfo.update, t);
   const versionAccessibility = [versionInfo.nativeLabel, updateLabel].filter(Boolean).join(". ");
+  const approvals = useApprovalSettings(ACCOUNT_SETTINGS);
+  const settingsLink = ({ title, href }: { title: string; href: Extract<Href, string> }) => (
+    <SettingsRow
+      key={href}
+      accessibilityRole="button"
+      chevron="right"
+      disabled={pending}
+      // Artifacts lives on the root stack, so it closes the sheet before opening.
+      onPress={() =>
+        isSettingsLink(href) ? router.push(href) : openFromSettingsSheet(router, href)
+      }
+      title={title}
+    />
+  );
 
   useEffect(() => {
-    void rpc<MobileMe>("me")
+    void rpc("me")
       .then(setMe)
       .catch(() => undefined);
-    void rpc<{
-      runs: number;
-      inputTokens: number | null;
-      outputTokens: number | null;
-      totalTokens?: number | null;
-    }>("usage/summary")
+    void rpc("usage/summary")
       .then(setUsage)
       .catch(() => undefined);
     if (Platform.OS === "android") {
@@ -150,20 +219,49 @@ export default function Account() {
     }
   }, []);
 
+  const count = new Intl.NumberFormat(dateLocaleForUi(locale));
+  const usd = new Intl.NumberFormat(dateLocaleForUi(locale), {
+    style: "currency",
+    currency: "USD",
+  });
+  const tokens = (value: number | null | undefined) => (value == null ? "—" : count.format(value));
+  const cost = (value: number | null | undefined) =>
+    value == null
+      ? undefined
+      : value > 0 && value < 0.01
+        ? `<${usd.format(0.01)}`
+        : usd.format(value);
   const usageBlock = (
     <SettingsRow
       accessible
       title={t("Usage")}
       detail={
         usage
-          ? t("{runs} runs · {tokens} tokens", {
-              runs: usage.runs,
-              tokens: usage.totalTokens ?? "—",
+          ? t("{runs} runs, {tokens} tokens", {
+              runs: count.format(usage.runs),
+              tokens: tokens(usage.totalTokens),
             })
           : undefined
       }
+      value={cost(usage?.costUsd)}
     />
   );
+  const usageModels = usage?.models?.length ? (
+    <SettingsGroup>
+      {usage.models.map((row) => (
+        <SettingsRow
+          key={`${row.provider}:${row.model}`}
+          accessible
+          title={row.model}
+          detail={`${row.provider}, ${t("{calls} calls, {tokens} tokens", {
+            calls: count.format(row.modelCalls),
+            tokens: tokens(row.totalTokens),
+          })}`}
+          value={cost(row.costUsd)}
+        />
+      ))}
+    </SettingsGroup>
+  ) : null;
 
   useFocusEffect(
     useCallback(() => {
@@ -179,18 +277,29 @@ export default function Account() {
     }, []),
   );
 
-  async function selectAvatarStyle(next: AvatarStyle) {
-    if (next === avatarStyle) return;
-    setAvatarPending(true);
-    setAvatarError(null);
-    try {
-      await updateAvatarStyle(next);
-    } catch {
-      setAvatarError(t("Couldn't update avatars"));
-    } finally {
-      setAvatarPending(false);
-    }
-  }
+  // Granting notifications in system settings leaves this screen mounted, so the
+  // row would keep saying blocked until the app comes back to the foreground.
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      let active = true;
+      const read = () => {
+        void Notifications.getPermissionsAsync()
+          .then((permission) => {
+            if (active) setNotificationPermission(permission.status);
+          })
+          .catch(() => undefined);
+      };
+      read();
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") read();
+      });
+      return () => {
+        active = false;
+        subscription.remove();
+      };
+    }, []),
+  );
 
   async function handleSignOut() {
     setPending(true);
@@ -204,28 +313,33 @@ export default function Account() {
     }
   }
 
-  async function updateNotifications(next: LiveNotificationSettings) {
-    const previous = notifications;
-    setNotifications(next);
-    setNotificationPending(true);
+  function updateNotifications(next: LiveNotificationSettings) {
+    notificationQueue.current ??= createQueuedSave(notifications, {
+      onChange: setNotifications,
+      equals: (a, b) =>
+        a.liveConnection === b.liveConnection &&
+        a.messages === b.messages &&
+        a.scheduledTasks === b.scheduledTasks &&
+        a.needsAttention === b.needsAttention,
+      save: async (settings) => {
+        await setLiveNotificationSettings(
+          settings,
+          currentApiBase(),
+          await loadSessionToken(),
+          selectedSpaceId() ?? "",
+        );
+      },
+      onSaved: async (settings) => {
+        if (settings.liveConnection && !(await canPostPromotedNotifications())) {
+          await openPromotedNotificationSettings();
+        }
+        await registerPushToken();
+      },
+      onError: (cause) =>
+        setNotificationError(errorText(cause, t("Could not update notifications"))),
+    });
     setNotificationError(null);
-    try {
-      await setLiveNotificationSettings(
-        next,
-        currentApiBase(),
-        await loadSessionToken(),
-        selectedSpaceId() ?? "",
-      );
-      if (next.liveConnection && !(await canPostPromotedNotifications())) {
-        await openPromotedNotificationSettings();
-      }
-      await registerPushToken();
-    } catch (cause) {
-      setNotifications(previous);
-      setNotificationError(errorText(cause, t("Could not update notifications")));
-    } finally {
-      setNotificationPending(false);
-    }
+    notificationQueue.current.update(next);
   }
 
   async function securityAction(run: () => Promise<void>) {
@@ -243,7 +357,46 @@ export default function Account() {
     void fetchAccountSecurity()
       .then(setSecurity)
       .catch(() => undefined);
-  }, []);
+    void passwordResetCapabilities()
+      .then(async (capabilities) => {
+        if (await passkeysAvailable(capabilities)) await loadPasskeys();
+      })
+      .catch(() => undefined);
+  }, [loadPasskeys]);
+
+  async function passkeyAction(run: () => Promise<unknown>) {
+    setPasskeyPending(true);
+    setPasskeyError(null);
+    try {
+      await run();
+      await loadPasskeys();
+    } catch (err) {
+      setPasskeyError(errorText(err, t("Could not continue")));
+    } finally {
+      setPasskeyPending(false);
+    }
+  }
+
+  function passkeyMenuAction(passkey: MobilePasskey, name: string, action: string) {
+    if (action === "rename") {
+      promptSectionName({
+        title: t("Rename"),
+        cancelLabel: t("Cancel"),
+        submitLabel: t("Save"),
+        defaultValue: passkey.name ?? undefined,
+        onSubmit: (next) => void passkeyAction(() => renamePasskey(passkey.id, next)),
+      });
+    } else if (action === "delete") {
+      Alert.alert(t("Delete {name}?", { name }), undefined, [
+        { text: t("Cancel"), style: "cancel" },
+        {
+          text: t("Delete"),
+          style: "destructive",
+          onPress: () => void passkeyAction(() => deletePasskey(passkey.id)),
+        },
+      ]);
+    }
+  }
 
   function closeDeletePrompt() {
     if (pending) return;
@@ -310,16 +463,34 @@ export default function Account() {
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
       <ScrollView
+        style={sideInsets}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.content, stackOptions && styles.compactContent]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        {focus === "usage" ? <SettingsGroup>{usageBlock}</SettingsGroup> : null}
+        {focus === "usage" ? (
+          <>
+            <SettingsGroup>{usageBlock}</SettingsGroup>
+            {usageModels}
+          </>
+        ) : null}
         <SettingsGroup>
           <SettingsRow
-            accessible
-            detail={me?.email || undefined}
+            accessibilityRole="button"
+            accessibilityLabel={t("Edit name")}
+            accessibilityValue={{
+              text:
+                me?.email && account.label !== me.email
+                  ? `${account.label}, ${me.email}`
+                  : account.label,
+            }}
+            chevron="right"
+            disabled={!me}
+            detail={me?.email && account.label !== me.email ? me.email : undefined}
             prominent
-            title={me?.name || t("Your account")}
+            title={account.label}
+            dimmed={namePending}
+            onPress={editName}
           />
           {focus !== "usage" ? usageBlock : null}
         </SettingsGroup>
@@ -351,6 +522,68 @@ export default function Account() {
           </SettingsGroup>
         ) : null}
 
+        {passkeys ? (
+          <SettingsGroup accessibilityLabel={t("Passkeys")} label={t("Passkeys")}>
+            {passkeys.map((passkey) => {
+              const name = passkey.name ?? t("Passkey");
+              const created = passkey.createdAt ? new Date(passkey.createdAt) : null;
+              return (
+                <MenuView
+                  key={passkey.id}
+                  actions={[
+                    // Alert.prompt, which renames, exists only on iOS.
+                    ...(Platform.OS === "ios" ? [{ id: "rename", title: t("Rename") }] : []),
+                    { id: "delete", title: t("Delete"), attributes: { destructive: true } },
+                  ]}
+                  colorScheme={colorScheme}
+                  onPressAction={(event) =>
+                    passkeyMenuAction(passkey, name, event.nativeEvent.event)
+                  }
+                  title={name}
+                >
+                  <SettingsRow
+                    accessible
+                    accessibilityRole="button"
+                    detail={
+                      created && !Number.isNaN(created.getTime())
+                        ? created.toLocaleDateString(dateLocaleForUi(locale), {
+                            dateStyle: "medium",
+                          })
+                        : undefined
+                    }
+                    dimmed={passkeyPending}
+                    title={name}
+                  />
+                </MenuView>
+              );
+            })}
+            <SettingsRow
+              accessibilityRole="button"
+              disabled={passkeyPending}
+              dimmed={passkeyPending}
+              onPress={() => void passkeyAction(addPasskey)}
+              title={t("Add passkey")}
+            />
+            {passkeyLoadError ? (
+              <>
+                <Text accessibilityRole="alert" style={styles.error}>
+                  {passkeyLoadError}
+                </Text>
+                <SettingsRow
+                  accessibilityRole="button"
+                  onPress={() => void loadPasskeys()}
+                  title={t("Retry")}
+                />
+              </>
+            ) : null}
+            {passkeyError ? (
+              <Text accessibilityRole="alert" style={styles.error}>
+                {passkeyError}
+              </Text>
+            ) : null}
+          </SettingsGroup>
+        ) : null}
+
         <View accessibilityLabel={t("Appearance")} style={styles.section}>
           <SettingsLabel>{t("Appearance")}</SettingsLabel>
           <NativeSegmentedControl
@@ -363,49 +596,6 @@ export default function Account() {
             ]}
             value={appearance}
           />
-        </View>
-
-        <View accessibilityLabel={t("Avatar style")} style={styles.section}>
-          <SettingsLabel>{t("Avatars")}</SettingsLabel>
-          <View style={[styles.options, stackOptions && styles.optionsStacked]}>
-            {(["robot", "organic"] as const).map((style) => {
-              const selected = avatarStyle === style;
-              const styleLabel = style === "robot" ? t("Robot") : t("Organic");
-              return (
-                <Pressable
-                  key={style}
-                  accessibilityLabel={t("{style} avatars", { style: styleLabel })}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected, disabled: avatarPending }}
-                  disabled={avatarPending}
-                  onPress={() => void selectAvatarStyle(style)}
-                  style={({ pressed }) => [
-                    styles.option,
-                    styles.avatarOption,
-                    !stackOptions && styles.optionSideBySide,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <BotAvatar
-                    color={style === "robot" ? "#8B5CF6" : "#D62F8B"}
-                    identity="avatar-preview"
-                    size={42}
-                    variant={style}
-                  />
-                  <Text style={styles.optionLabel}>{styleLabel}</Text>
-                  <NativeSymbol
-                    android={selected ? "checkmark-circle" : "ellipse-outline"}
-                    color={selected ? native.label : native.tertiaryLabel}
-                    ios={selected ? "checkmark.circle.fill" : "circle"}
-                    size={22}
-                  />
-                </Pressable>
-              );
-            })}
-          </View>
-          <SettingsGroup>
-            {avatarError ? <Text style={styles.error}>{avatarError}</Text> : null}
-          </SettingsGroup>
         </View>
 
         <SettingsGroup>
@@ -422,10 +612,18 @@ export default function Account() {
 
         {Platform.OS === "android" ? (
           <SettingsGroup accessibilityLabel={t("Notifications")} label={t("Notifications")}>
+            {notificationPermission === "denied" ? (
+              <SettingsRow
+                accessibilityRole="button"
+                detail={t("Android blocked notifications.")}
+                onPress={() => void openLiveNotificationSettings()}
+                title={t("Notifications")}
+              />
+            ) : null}
             <SettingsSwitch
               label={t("Live working status")}
               value={notifications.liveConnection}
-              disabled={notificationPending || !notificationsReady}
+              disabled={!notificationsReady}
               onChange={(liveConnection) =>
                 void updateNotifications({ ...notifications, liveConnection })
               }
@@ -434,13 +632,13 @@ export default function Account() {
               label={t("Agent messages")}
               detail={t("Replies and completed work")}
               value={notifications.messages}
-              disabled={notificationPending || !notificationsReady}
+              disabled={!notificationsReady}
               onChange={(messages) => void updateNotifications({ ...notifications, messages })}
             />
             <SettingsSwitch
               label={t("Scheduled tasks")}
               value={notifications.scheduledTasks}
-              disabled={notificationPending || !notificationsReady}
+              disabled={!notificationsReady}
               onChange={(scheduledTasks) =>
                 void updateNotifications({ ...notifications, scheduledTasks })
               }
@@ -449,16 +647,18 @@ export default function Account() {
               label={t("Needs attention")}
               detail={t("Questions, approvals, takeover")}
               value={notifications.needsAttention}
-              disabled={notificationPending || !notificationsReady}
+              disabled={!notificationsReady}
               onChange={(needsAttention) =>
                 void updateNotifications({ ...notifications, needsAttention })
               }
             />
-            <SettingsRow
-              accessibilityRole="button"
-              onPress={() => void openPromotedNotificationSettings()}
-              title={t("Live update settings")}
-            />
+            {hasLiveUpdateSettings() ? (
+              <SettingsRow
+                accessibilityRole="button"
+                onPress={() => void openPromotedNotificationSettings()}
+                title={t("Live update settings")}
+              />
+            ) : null}
             <SettingsRow
               accessibilityRole="button"
               onPress={() => void openLiveNotificationSettings()}
@@ -469,42 +669,41 @@ export default function Account() {
         ) : null}
 
         <SettingsGroup>
-          <SettingsRow
-            accessibilityRole="button"
-            chevron="right"
-            disabled={pending}
-            onPress={() => router.push("/models")}
-            title={t("Models")}
-          />
-          <SettingsRow
-            accessibilityRole="button"
-            chevron="right"
-            disabled={pending}
-            onPress={() => router.push("/voice")}
-            title={t("Voice")}
-          />
-          <SettingsRow
-            accessibilityRole="button"
-            chevron="right"
-            disabled={pending}
-            onPress={() => router.push("/integrations")}
-            title={t("Integrations")}
-          />
-          <SettingsRow
-            accessibilityRole="button"
-            chevron="right"
-            disabled={pending}
-            onPress={() => router.push("/ai-data-sharing")}
-            title={t("AI data sharing")}
-          />
-          {me?.isDeploymentOwner ? (
+          {me?.billingEnabled ? (
             <SettingsRow
-              accessibilityRole="button"
+              title={t("Billing")}
               chevron="right"
-              onPress={() => router.push("/integration-setup")}
-              title={t("Server integrations")}
+              onPress={() => router.push("/billing")}
             />
           ) : null}
+          {(
+            [
+              { title: t("Artifacts"), href: "/artifacts" },
+              { title: t("Models"), href: "/models" },
+              { title: t("Voice"), href: "/voice" },
+            ] as const
+          ).map(settingsLink)}
+          <ApprovalModeRow key="approvals" approvals={approvals} disabled={pending} />
+          {approvals.ruleCount ? (
+            <ApprovalRulesRow
+              key="approval-rules"
+              count={approvals.ruleCount}
+              disabled={pending}
+              onPress={() => router.push("/approvals")}
+            />
+          ) : null}
+          {(
+            [
+              { title: t("Vault"), href: "/vault" },
+              ...(me?.paymentWalletProvider
+                ? [{ title: t("Wallet"), href: "/wallet" } as const]
+                : []),
+              { title: t("Integrations"), href: "/integrations" },
+              { title: t("Skills"), href: "/skills" },
+              { title: t("Messaging"), href: "/messaging" },
+              { title: t("AI data sharing"), href: "/ai-data-sharing" },
+            ] as const
+          ).map(settingsLink)}
         </SettingsGroup>
 
         <SettingsGroup>
@@ -596,6 +795,19 @@ export default function Account() {
           ) : null}
         </SettingsGroup>
       </ScrollView>
+      {nameDialogOpen ? (
+        <NameDialog
+          draft={nameDraft}
+          error={nameError}
+          saving={namePending}
+          onChange={(value) => {
+            setNameDraft(value);
+            setNameError(null);
+          }}
+          onSave={(value) => void saveName(value)}
+          onClose={closeNameDialog}
+        />
+      ) : null}
       {deleteOpen ? (
         <Modal transparent animationType="fade" onRequestClose={closeDeletePrompt}>
           <KeyboardAvoidingView
@@ -719,38 +931,6 @@ function createAccountStyles() {
     section: {
       gap: 7,
     },
-    options: {
-      flexDirection: "row",
-      gap: 8,
-    },
-    optionsStacked: {
-      flexDirection: "column",
-    },
-    option: {
-      minHeight: 48,
-      borderRadius: 14,
-      borderCurve: "continuous",
-      borderWidth: 2,
-      borderColor: "transparent",
-      backgroundColor: native.groupedCell,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    optionSideBySide: {
-      flex: 1,
-    },
-    avatarOption: {
-      minHeight: 96,
-      gap: 8,
-    },
-    optionLabel: {
-      color: native.label,
-      fontSize: 15,
-      fontWeight: "600",
-      textAlign: "center",
-    },
     about: {
       alignItems: "center",
       gap: 16,
@@ -833,9 +1013,6 @@ function createAccountStyles() {
     },
     disabled: {
       opacity: 0.45,
-    },
-    pressed: {
-      backgroundColor: native.fillPressed,
     },
   });
 }

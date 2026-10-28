@@ -1,37 +1,54 @@
-import type { Routine } from "@rakazo/contracts";
+import { displayName } from "@rakazo/core";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BotAvatar } from "../components/bot-avatar";
 import { glassHeaderOptions } from "../components/glass-title";
-import { SettingsGroup, SettingsRow, useStackedSettings } from "../components/settings-group";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsSwitch,
+  useStackedSettings,
+} from "../components/settings-group";
 import type { MobileBot } from "../lib/api";
-import { rpc } from "../lib/api";
+import { currentApiBase, loadSessionToken, rpc, selectedSpaceId } from "../lib/api";
 import { useI18n } from "../lib/i18n";
+import { afterChatNotifyChange } from "../lib/live-notifications";
 import { native, useThemedStyles } from "../lib/native";
-import { deviceTimeZone, routineRowDetail, sortRoutinesByNextRun } from "../lib/routine";
+import { createQueuedSave } from "../lib/queued-save";
+import { useBotRoutines } from "../lib/routine-store";
+import { useSideInsets } from "../lib/side-insets";
 import { errorText } from "../lib/user-error";
 
 export default function BotProfile() {
+  const sideInsets = useSideInsets();
   const { t } = useI18n();
   const router = useRouter();
   const styles = useThemedStyles(createStyles);
   const stacked = useStackedSettings();
   const { botId = "", name: nameParam } = useLocalSearchParams<{ botId?: string; name?: string }>();
   const [bot, setBot] = useState<MobileBot | null>(null);
-  const [routines, setRoutines] = useState<Routine[] | null>(null);
-  const [routinesError, setRoutinesError] = useState<string | null>(null);
-  const name = bot?.name || nameParam || t("Bot");
-  const timeZone = deviceTimeZone();
+  const name = displayName(bot?.name ?? nameParam, t("Bot"));
+  const { routines } = useBotRoutines(botId);
+  // Counts switch saves as they start and end, so a reload can tell it overlapped one.
+  const notifySaves = useRef(0);
+  const notifyQueue = useRef<ReturnType<typeof createQueuedSave<boolean>> | null>(null);
 
   // Reload on focus so edits made in Chat settings or a routine show on return.
   useFocusEffect(
     useCallback(() => {
       if (!botId) return;
       let current = true;
-      void rpc<MobileBot>("bots/get", { botId })
+      const saves = notifySaves.current;
+      void rpc("bots/get", { botId })
         .then((next) => {
-          if (current) setBot(next);
+          if (!current) return;
+          // A read that overlapped a save may predate it; keep the switch as the user left it.
+          const overlapped = saves % 2 === 1 || saves !== notifySaves.current;
+          if (!overlapped) notifyQueue.current?.reset(next.notifyOnFinish);
+          setBot((shown) =>
+            overlapped && shown ? { ...next, notifyOnFinish: shown.notifyOnFinish } : next,
+          );
         })
         .catch(() => undefined);
       return () => {
@@ -40,31 +57,39 @@ export default function BotProfile() {
     }, [botId]),
   );
 
-  // Only the latest load (on focus or retry) may set state; leaving the screen drops them all.
-  const routinesRequest = useRef(0);
-  const loadRoutines = useCallback(() => {
-    if (!botId) return;
-    const request = ++routinesRequest.current;
-    void rpc<Routine[]>("routines/list", { botId })
-      .then((next) => {
-        if (request !== routinesRequest.current) return;
-        setRoutines(sortRoutinesByNextRun(next));
-        setRoutinesError(null);
-      })
-      .catch((error) => {
-        if (request === routinesRequest.current) {
-          setRoutinesError(errorText(error, t("Could not load routines")));
+  // The chat list's Silence notifications saves the same setting. The switch moves
+  // first and moves back if the save fails.
+  const setNotifyOnFinish = (notifyOnFinish: boolean) => {
+    if (!bot) return;
+    notifyQueue.current ??= createQueuedSave(bot.notifyOnFinish, {
+      onChange: (notifyOnFinish) => setBot((current) => current && { ...current, notifyOnFinish }),
+      save: async (notifyOnFinish) => {
+        await rpc("bots/update", { botId, notifyOnFinish });
+      },
+      onSavingChange: () => {
+        notifySaves.current += 1;
+      },
+      onSaved: async (notify) => {
+        try {
+          await afterChatNotifyChange(
+            currentApiBase(),
+            await loadSessionToken(),
+            selectedSpaceId() ?? "",
+            { threadId: bot.threadId, notify },
+          );
+        } catch {
+          // The server save succeeded; device reconciliation can retry later.
         }
-      });
-    return () => {
-      routinesRequest.current += 1;
-    };
-  }, [botId, t]);
-  useFocusEffect(loadRoutines);
+      },
+      onError: (error) =>
+        Alert.alert(t("Could not update notifications"), errorText(error, t("Try again."))),
+    });
+    notifyQueue.current.update(notifyOnFinish);
+  };
 
   return (
     <ScrollView
-      style={styles.screen}
+      style={[styles.screen, sideInsets]}
       contentContainerStyle={[styles.content, stacked && styles.compactContent]}
       contentInsetAdjustmentBehavior="automatic"
     >
@@ -77,7 +102,13 @@ export default function BotProfile() {
       />
       <View style={styles.identity}>
         {bot ? (
-          <BotAvatar color={bot.color} identity={bot.id} size={96} status={bot.status} />
+          <BotAvatar
+            color={bot.color}
+            avatarSet={bot.avatarSet}
+            identity={bot.id}
+            size={96}
+            status={bot.status}
+          />
         ) : (
           <View style={styles.avatarSpace} />
         )}
@@ -95,6 +126,19 @@ export default function BotProfile() {
           onPress={() => router.push({ pathname: "/bot-settings", params: { botId } })}
         />
         <SettingsRow
+          key="routines"
+          accessibilityRole="button"
+          chevron="right"
+          title={t("Routines")}
+          // Counts the routines that are switched on; nothing until the first read lands.
+          value={
+            routines
+              ? t("{count} on", { count: routines.filter((routine) => routine.active).length })
+              : undefined
+          }
+          onPress={() => router.push({ pathname: "/routines", params: { botId, name } })}
+        />
+        <SettingsRow
           key="artifacts"
           accessibilityRole="button"
           chevron="right"
@@ -109,34 +153,16 @@ export default function BotProfile() {
           onPress={() => router.push({ pathname: "/computer", params: { botId, name } })}
         />
       </SettingsGroup>
-      {/* Routines show only once there is something to list, or a load to retry. */}
-      <SettingsGroup label={t("Routines")}>
-        {routinesError ? (
-          <SettingsRow
-            key="error"
-            accessibilityRole="button"
-            title={routinesError}
-            detail={t("Try again.")}
-            onPress={() => void loadRoutines()}
+      {bot ? (
+        <SettingsGroup footer={t("Get notified when this Bot finishes or needs input")}>
+          <SettingsSwitch
+            key="notifications"
+            label={t("Notifications")}
+            value={bot.notifyOnFinish}
+            onChange={setNotifyOnFinish}
           />
-        ) : (
-          routines?.map((routine) => (
-            <SettingsRow
-              key={routine.id}
-              accessibilityRole="button"
-              chevron="right"
-              title={routine.name}
-              detail={routineRowDetail(routine, timeZone)}
-              onPress={() =>
-                router.push({
-                  pathname: "/routine",
-                  params: { botId, botName: name, routineId: routine.id, origin: "profile" },
-                })
-              }
-            />
-          ))
-        )}
-      </SettingsGroup>
+        </SettingsGroup>
+      ) : null}
     </ScrollView>
   );
 }

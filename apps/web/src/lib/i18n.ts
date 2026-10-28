@@ -1,6 +1,8 @@
 import { i18n } from "@lingui/core";
 import { applyUiDirection } from "./apply-ui-direction";
-import { persistUiLocale, resolveUiLocale, type UiLocale } from "./ui-locale";
+import { importChunk } from "./preload-recovery";
+import type { UiLocale } from "./ui-locale";
+import { persistUiLocale, resolveUiLocale } from "./ui-locale";
 
 export { i18n };
 
@@ -15,11 +17,14 @@ const defaultCatalogLoaders: Record<UiLocale, CatalogLoader> = {
   tr: () => import("../locales/tr/messages.po") as Promise<CatalogModule>,
   hi: () => import("../locales/hi/messages.po") as Promise<CatalogModule>,
   "pt-BR": () => import("../locales/pt-BR/messages.po") as Promise<CatalogModule>,
+  "zh-TW": () => import("../locales/zh-TW/messages.po") as Promise<CatalogModule>,
   "zh-CN": () => import("../locales/zh-CN/messages.po") as Promise<CatalogModule>,
   es: () => import("../locales/es/messages.po") as Promise<CatalogModule>,
   ru: () => import("../locales/ru/messages.po") as Promise<CatalogModule>,
   fr: () => import("../locales/fr/messages.po") as Promise<CatalogModule>,
   he: () => import("../locales/he/messages.po") as Promise<CatalogModule>,
+  nl: () => import("../locales/nl/messages.po") as Promise<CatalogModule>,
+  ja: () => import("../locales/ja/messages.po") as Promise<CatalogModule>,
 };
 
 let catalogLoaders: Record<UiLocale, CatalogLoader> = defaultCatalogLoaders;
@@ -38,7 +43,7 @@ export function getActiveUiLocale(): UiLocale {
 }
 
 async function loadCatalog(locale: UiLocale): Promise<CatalogMessages> {
-  const { messages } = await catalogLoaders[locale]();
+  const { messages } = await importChunk(catalogLoaders[locale]);
   return messages;
 }
 

@@ -5,13 +5,21 @@ import {
   BotSecretName,
   botSecretDestinationSchema,
   FLEET_TOOL_NAMES,
+  GenerateSecretInput,
+  LOGIN_FIELD_LIMIT,
+  PAID_REQUEST_METHODS,
+  PURCHASE_CARD_FIELDS,
   SecretAskPurpose,
   SecretHttpRequest,
+  TICKET_COMMENT_MAX_LENGTH,
+  TICKET_DESCRIPTION_MAX_LENGTH,
   TICKET_PRIORITIES,
   TICKET_STATUSES,
+  TICKET_TITLE_MAX_LENGTH,
 } from "@rakazo/contracts";
 import { z } from "zod";
 import { allowPrivateHttpSecretOrigins } from "./bot-secrets.js";
+import { BROWSER_ACT_KINDS } from "./browser-tools.js";
 import { messageUserMaxLength } from "./user-progress.js";
 
 // The owner flag can land in process.env after static imports run (loadRootEnv
@@ -30,7 +38,7 @@ function secretAskToolSurface() {
       allowPrivateHttpOrigins
         ? "HTTPS origin, or an HTTP origin on a private LAN host"
         : "HTTPS origin"
-    }, or connectionId for a one-use connector code. Credential names must start with a lowercase letter and use only lowercase letters, digits, hyphens, or underscores (max 64 characters). For a website login the user wants saved, use auth {type:"login"} with the sign-in page's HTTPS origin; the card asks for a username and password, and browser_act fill_secret types them. For a value this bot's shell commands need, use auth {type:"command"} with no origin; it is exported to them as an environment variable named after the credential in upper case with hyphens as underscores (netbird-setup-key becomes $NETBIRD_SETUP_KEY). Existing named credentials are reused unless replace is true. For 2FA, CAPTCHA, passkeys, or anything else that needs the live desktop, call request_takeover instead.`,
+    }, or connectionId for a one-use connector code. Credential names must start with a lowercase letter and use only lowercase letters, digits, hyphens, or underscores (max 64 characters). For a website login the user wants saved, use auth {type:"login"} with the sign-in page's HTTPS origin, and fields with the labels the site signs in with (default Username and Password); the card asks for each, and browser_act fill_secret types one by its label. The user decides which fields are hidden: a hidden field is typed only into a password field. If one is refused in another field, ask again with replace true so the user can make it visible. For a value this bot's shell commands need, use auth {type:"command"} with no origin; it is exported to them as an environment variable named after the credential in upper case with hyphens as underscores (netbird-setup-key becomes $NETBIRD_SETUP_KEY). Existing named credentials are reused unless replace is true. For 2FA, CAPTCHA, passkeys, or anything else that needs the live desktop, call request_takeover instead.`,
     inputSchema: {
       oneOf: [
         {
@@ -46,6 +54,14 @@ function secretAskToolSurface() {
             replace: {
               type: "boolean",
               description: "Ask the user to replace an existing credential value.",
+            },
+            fields: {
+              type: "array",
+              items: { type: "string" },
+              minItems: 1,
+              maxItems: LOGIN_FIELD_LIMIT,
+              description:
+                "For a login: the labels of the values the site signs in with, in order, such as Email and Password or ID number and Phone number.",
             },
           },
           required: ["label", "purpose", "credential"],
@@ -82,9 +98,9 @@ const scheduleCreateProperties = {
   prompt: {
     type: "string",
     description:
-      "Concrete steps for when the schedule fires: name the connected plugin tools to call (e.g. GITHUB_LIST_RELEASES for owner/repo), what to extract, and how to report. Prefer plugin tools over computer browser or web search for app data.",
+      'Concrete steps for when the schedule fires: what to use, what to extract, and how to report. Name the connected plugin tools to call when one covers the data (e.g. GITHUB_LIST_RELEASES for owner/repo), preferring them over the computer browser or web search; for a website without one, describe the pages and actions to take in the computer\'s browser. This prompt is all a future run knows, and it runs in new circumstances: write the user\'s lasting request in full, keeping every standing item and preference, including their swap and skip rules. A decision that only fit this time, such as an item swapped or skipped because it was out of stock or anything the user said "this week" or "this time" about, becomes a condition, never a permanent change ("skip sourdough if it is out of stock", not "skip sourdough").',
   },
-  timezone: { type: "string", description: "IANA timezone (default UTC)." },
+  timezone: { type: "string", description: "IANA timezone (default: the user's timezone)." },
 };
 
 const scheduleTimingNames = [
@@ -113,7 +129,10 @@ const scheduleTimingSpecs = {
     enum: ["minutes", "hours", "days"],
     description: "Unit for every (minimum 1 minute).",
   },
-  runAt: { type: "string", description: "ISO datetime for a one-shot schedule." },
+  runAt: {
+    type: "string",
+    description: "ISO datetime for a one-shot schedule; without an offset, read in timezone.",
+  },
   delayMinutes: {
     type: "number",
     description: "Minutes from now for a one-shot schedule.",
@@ -148,6 +167,12 @@ const scheduleTimingSpecs = {
   },
 };
 
+const startAtSpec = {
+  type: "string",
+  description:
+    "ISO date or datetime a repeating schedule starts; the first run is the first match at or after it. Without an offset, read in timezone. If you already did this period's work yourself, set startAt so the first run does not repeat it.",
+};
+
 function scheduleCreateBranch(
   active: readonly (keyof typeof scheduleTimingSpecs)[],
   extraProperties: Record<string, unknown> = {},
@@ -157,6 +182,8 @@ function scheduleCreateBranch(
   for (const name of scheduleTimingNames) {
     properties[name] = activeNames.has(name) ? scheduleTimingSpecs[name] : blankScheduleTiming;
   }
+  properties.startAt =
+    activeNames.has("cron") || activeNames.has("every") ? startAtSpec : blankScheduleTiming;
   return {
     type: "object",
     properties,
@@ -178,8 +205,8 @@ const scheduleCreateInputSchema = {
 };
 
 const childRoutineTargetProperties = {
-  bot_id: { type: "string", description: "Id of a bot you created." },
-  bot_name: { type: "string", description: "Exact name of a bot you created." },
+  bot_id: { type: "string", description: "Id of a bot in this space." },
+  bot_name: { type: "string", description: "Exact name of a bot in this space." },
 };
 
 /** Same exactly-one-timing-method rule as schedule_create, plus the target bot. */
@@ -237,7 +264,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "computer_act",
     description:
-      "Perform up to 24 ordered desktop actions on this bot's computer and return the resulting screen. Batch only predictable actions; stop before an outcome you need to inspect. Action kinds: click, move, down, up, type, key, scroll, wait, focus (raises the application's window, launching it if absent).",
+      "Perform up to 24 ordered desktop actions on this bot's computer and return the resulting screen. Batch only predictable actions; stop before an outcome you need to inspect. Action kinds: click, move, down, up, type, key, scroll, wait, focus (raises the application's window, launching it if absent). Scroll turns the wheel at x,y; put them on the area to scroll, as for a click. Without them it scrolls wherever the pointer is. Direction up, down, left or right; amount 1-20 wheel notches, default 3.",
     inputSchema: {
       type: "object",
       properties: {
@@ -268,7 +295,7 @@ export const builtinAgentTools: ConnectorTool[] = [
                   text: { type: "string" },
                   key: { type: "string" },
                   modifiers: { type: "array", items: { type: "string" } },
-                  direction: { type: "string", enum: ["up", "down"] },
+                  direction: { type: "string", enum: ["up", "down", "left", "right"] },
                   amount: { type: "number" },
                   ms: { type: "number" },
                   application: { type: "string" },
@@ -301,14 +328,13 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "browser_snapshot",
     description:
-      "Capture an accessibility-style snapshot of the current page with element refs (e1, e2, …). Use refs with browser_act. Prefer this over computer_observe for web pages. If fallback is computer_act, use the desktop tools instead.",
+      "Capture an accessibility-style snapshot of the current page with element refs (e1, e2, …). Use refs with browser_act. Prefer this over computer_observe for web pages. If loading is true, take another snapshot before deciding what the page shows. If fallback is computer_act, use the desktop tools instead.",
     inputSchema: { type: "object", properties: {} },
     readOnly: true,
   },
   {
     name: "browser_act",
-    description:
-      'Click or fill page elements by ref from browser_snapshot (kinds: click, fill, type, upload, fill_secret). upload attaches your files to a "file upload" element; use it instead of clicking upload buttons. fill_secret types the username or password of a login saved with request_secret, only on the site it was saved for; you never see the value. Prefer this over computer_act for web pages. If the result includes fallback:"computer_act", use computer_act instead.',
+    description: `Click or fill page elements by ref from browser_snapshot (kinds: ${BROWSER_ACT_KINDS.join(", ")}). upload attaches your files to a "file upload" element; use it instead of clicking upload buttons. fill_secret types one field of a login saved with request_secret, by its label, only on the site it was saved for; you never see the value. fill_card types an approved purchase's card details, only on its merchant site; leave out ref to find the field, including in a payment frame. fill_pay_token hands an approved purchase's pay token to its checkout; no ref. type presses keys like a keyboard and replaces the field's text; use it for code boxes and fields that ignore fill. For a code split into one box per digit, type the whole code once into the first box, and to correct it type it again. Prefer this over computer_act for web pages. If the result includes fallback:"computer_act", use computer_act instead.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -319,23 +345,32 @@ export const builtinAgentTools: ConnectorTool[] = [
             properties: {
               kind: {
                 type: "string",
-                enum: ["click", "fill", "type", "upload", "fill_secret"],
+                enum: [...BROWSER_ACT_KINDS],
               },
-              ref: { type: "string", description: "Element ref from browser_snapshot." },
-              text: { type: "string", description: "Text for fill or type." },
+              ref: {
+                type: "string",
+                description: "Element ref from browser_snapshot. Optional for fill_card.",
+              },
+              text: {
+                type: "string",
+                description: "Text for fill or type (type replaces the field's text).",
+              },
               paths: {
                 type: "array",
                 items: { type: "string" },
                 description: "Files to attach, for upload.",
               },
               secret: { type: "string", description: "Saved login name for fill_secret." },
+              purchase: {
+                type: "string",
+                description: "Approved purchase id for fill_card or fill_pay_token.",
+              },
               field: {
                 type: "string",
-                enum: ["username", "password"],
-                description: "Login field for fill_secret.",
+                description: `The login field's label for fill_secret (username and password also name a login's first visible and first hidden field); ${PURCHASE_CARD_FIELDS.join(", ")} for fill_card.`,
               },
             },
-            required: ["kind", "ref"],
+            required: ["kind"],
           },
         },
       },
@@ -402,6 +437,19 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "user_computer_shell",
+    description:
+      "Run a command on the user's own computer. Use only when the task needs their local files, credentials, or network. cwd defaults to their home folder and must stay inside it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        command: { type: "string" },
+        cwd: { type: "string" },
+      },
+      required: ["command"],
+    },
+  },
+  {
     name: "open_path",
     description:
       "Open a workspace file or an http(s) URL in its default graphical application on this bot's computer and return the resulting screen.",
@@ -432,6 +480,17 @@ export const builtinAgentTools: ConnectorTool[] = [
       type: "object",
       properties: { reason: { type: "string" } },
       required: ["reason"],
+    },
+  },
+  {
+    name: "connect_app",
+    description:
+      "Show an inline card to connect an app in this chat when you need an unconnected app or the user asks to connect one. Then wait for the user instead of directing them elsewhere.",
+    inputSchema: {
+      type: "object",
+      properties: { app: { type: "string", minLength: 1, maxLength: 100 } },
+      required: ["app"],
+      additionalProperties: false,
     },
   },
   {
@@ -485,6 +544,12 @@ export const builtinAgentTools: ConnectorTool[] = [
     get inputSchema() {
       return secretAskToolSurface().inputSchema;
     },
+  },
+  {
+    name: "generate_secret",
+    description:
+      'Create a random password or key and save it for this bot and user; you never see the value. For a new website account, use type "login" with the sign-up site and the username, then type both into the form with browser_act fill_secret; add command: true only when a CLI also needs the password and the site offers no token or browser sign-in for it; that saves it as the command variable <name>-password too. For a value shell commands need, such as a database password you are setting up, use type "command"; it is exported like a request_secret command variable, so pass it from the environment instead of writing it out. Set rules only when the site or tool restricts characters, for example symbols: false for a value inside a URL. An existing credential is never replaced.',
+    inputSchema: z.toJSONSchema(GenerateSecretInput, { io: "input" }),
   },
   {
     name: "list_secrets",
@@ -547,7 +612,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "add_mcp_server",
     description:
-      "Connect an MCP tool server to this Space when the user asks you to add one and provides the details (URL or command, optional token/headers/env). The server is created immediately and assigned to you. If it needs browser OAuth authorization, an approval card appears in the chat for the user to complete — tell them to click Authorize. Do not invent endpoints; only use details the user provided.",
+      "Connect an MCP tool server to this Space when the user asks you to add one and provides the details (URL or command, optional token/headers/env). The server is created immediately and an approval card appears in the chat; its tools reach you once the user approves it there. Do not invent endpoints; only use details the user provided.",
     inputSchema: {
       type: "object",
       properties: {
@@ -596,7 +661,8 @@ export const builtinAgentTools: ConnectorTool[] = [
   },
   {
     name: "remember",
-    description: "Store a durable fact in this bot's explicit memory.",
+    description:
+      "Add a durable fact to this bot's explicit memory. The fact is appended; existing memory is kept.",
     inputSchema: {
       type: "object",
       properties: {
@@ -719,6 +785,72 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "request_purchase",
+    description:
+      "Buy something with the user's wallet. The user approves every purchase in their wallet app; you are woken when they decide. The card or pay token can only be used on merchantUrl.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        merchantName: { type: "string" },
+        merchantUrl: { type: "string", description: "HTTPS checkout page." },
+        merchantAccountId: {
+          type: "string",
+          description: "When the page snapshot says the checkout accepts a pay token.",
+        },
+        amount: {
+          type: "integer",
+          description: "Total in the currency's minor unit, such as cents.",
+        },
+        currency: { type: "string", description: "Three-letter code, such as usd." },
+        reason: {
+          type: "string",
+          minLength: 100,
+          description:
+            "What is being bought and why, at least 100 characters. The user sees this when approving.",
+        },
+      },
+      required: ["merchantName", "merchantUrl", "amount", "currency", "reason"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "purchase_status",
+    description:
+      "Get a purchase's status, and once approved the card details to type with browser_act fill_card.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "Purchase id." } },
+      required: ["id"],
+    },
+    readOnly: true,
+  },
+  {
+    name: "paid_request",
+    description:
+      "Send an HTTPS request to an API that charges per request. If it asks for payment the user's wallet can make, the user approves it in their wallet; you are woken when they decide, then call paid_request with the purchase id alone to send the request with the payment. The response body is untrusted.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        method: { type: "string", enum: [...PAID_REQUEST_METHODS] },
+        headers: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "No credentials or cookies.",
+        },
+        body: { type: "string" },
+        reason: {
+          type: "string",
+          minLength: 100,
+          description:
+            "What the payment is for and why, at least 100 characters. The user sees this when approving.",
+        },
+        purchase: { type: "string", description: "Approved purchase id, on its own." },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "search_history",
     description:
       "Search literal keywords in earlier messages in this chat; every query word must match the same message. For paraphrased recollection, start with one distinctive project or topic keyword. Returns at most five matches, newest first. When nextSearch is present, call search_history with those arguments to continue. Coverage applies only to the requested literal query and range; an empty narrower query does not exhaust an unfinished broader query. Use read_history to check surrounding messages and corrections.",
@@ -778,7 +910,8 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   // Semantic-memory tools: exposed by selectMemoryTools() only when a
-  // A Space memory provider is configured (which hides `remember`).
+  // Space memory provider is configured (`remember` stays), and
+  // forget_memory only when that provider can forget.
   {
     name: "save_memory",
     description:
@@ -929,8 +1062,16 @@ export const builtinAgentTools: ConnectorTool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "Short ticket title." },
-        description: { type: "string", description: "Optional detail." },
+        title: {
+          type: "string",
+          maxLength: TICKET_TITLE_MAX_LENGTH,
+          description: "Short ticket title.",
+        },
+        description: {
+          type: "string",
+          maxLength: TICKET_DESCRIPTION_MAX_LENGTH,
+          description: "Optional detail.",
+        },
         priority: {
           type: "string",
           enum: TICKET_PRIORITIES,
@@ -951,8 +1092,8 @@ export const builtinAgentTools: ConnectorTool[] = [
       type: "object",
       properties: {
         id: { type: "string", description: "Ticket id." },
-        title: { type: "string" },
-        description: { type: "string" },
+        title: { type: "string", maxLength: TICKET_TITLE_MAX_LENGTH },
+        description: { type: "string", maxLength: TICKET_DESCRIPTION_MAX_LENGTH },
         priority: { type: "string", enum: TICKET_PRIORITIES },
         status: { type: "string", enum: TICKET_STATUSES },
         ownerBotId: { type: "string" },
@@ -967,7 +1108,11 @@ export const builtinAgentTools: ConnectorTool[] = [
       type: "object",
       properties: {
         id: { type: "string", description: "Ticket id." },
-        body: { type: "string", description: "Comment text." },
+        body: {
+          type: "string",
+          maxLength: TICKET_COMMENT_MAX_LENGTH,
+          description: "Comment text.",
+        },
       },
       required: ["id", "body"],
     },
@@ -975,13 +1120,34 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "schedule_create",
     description:
-      'Create a reminder or recurring job for this bot. Use for "remind me in 10 minutes" or "every morning send a joke". Repeats: cron or every/unit (min 1 minute). One-shot: runAt, delayMinutes, or delaySeconds.',
+      'Create a reminder or recurring job for this bot. Use for "remind me in 10 minutes" or "every morning send a joke". Repeats: cron or every/unit (min 1 minute), optionally from startAt. One-shot: runAt, delayMinutes, or delaySeconds. A repeating job carries out the user\'s lasting request each time, not a copy of what was decided today.',
     inputSchema: scheduleCreateInputSchema,
   },
   {
     name: "schedule_list",
     description: "List this bot's active and inactive schedules (routines).",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "schedule_update",
+    description:
+      "Edit one of this bot's schedules by routineId instead of cancelling and recreating it. Send only what changes. Timing fields replace the current timing; startAt alone moves the next run of the current repeat. active false pauses it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        routineId: { type: "string" },
+        ...scheduleCreateProperties,
+        active: { type: "boolean" },
+        cron: scheduleTimingSpecs.cron,
+        every: scheduleTimingSpecs.every,
+        unit: scheduleTimingSpecs.unit,
+        startAt: startAtSpec,
+        runAt: scheduleTimingSpecs.runAt,
+        delayMinutes: scheduleTimingSpecs.delayMinutes,
+        delaySeconds: scheduleTimingSpecs.delaySeconds,
+      },
+      required: ["routineId"],
+    },
   },
   {
     name: "schedule_cancel",
@@ -1037,11 +1203,15 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "skill_read",
     description:
-      "Load a Claude Agent Skill (SKILL.md recipe) by exact name. Call this when a catalog skill matches the user's request, then follow it immediately.",
+      "Load a Claude Agent Skill (SKILL.md recipe) by exact name. Call this when a catalog skill matches the user's request, then follow it immediately. When the result lists files, read one by calling again with its path in file.",
     inputSchema: {
       type: "object",
       properties: {
         name: { type: "string", description: "Exact skill name from the catalog." },
+        file: {
+          type: "string",
+          description: "Optional path of one of the skill's files, e.g. references/billing.md.",
+        },
       },
       required: ["name"],
     },
@@ -1143,7 +1313,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "create_space",
     description:
-      "Propose a new space in the current organization when the user asks for a separate data boundary. A space can contain many bots and groups, but its chats, files, memory, tools, and integrations stay isolated from other spaces. This always shows the user a confirmation card before creation. Creating the space is the whole action; do not create bots in it unless the user asks later.",
+      "Propose a new space in the current organization when the user asks for a separate data boundary. A space can contain many bots and groups, but its chats, files, memory, tools, and integrations stay isolated from other spaces. Creating the space is the whole action; do not create bots in it unless the user asks later.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1233,7 +1403,7 @@ export const builtinAgentTools: ConnectorTool[] = [
         },
         bot_id: {
           type: "string",
-          description: "A bot you created, to update its profile instead of yours.",
+          description: "A bot in this space, to update its profile instead of yours.",
         },
       },
     },
@@ -1241,14 +1411,14 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "list_fleet",
     description:
-      "List the bots and groups of this user with their ids, sections and pinned state, and which bots you created. Pass bot_id of a bot you created to read only its full instructions and instructionsVersion, which set_child_instructions needs as expected_version. Call this before changing the fleet.",
+      "List the bots and groups in this space with their ids, sections and pinned state, and which bots you created. Pass bot_id of a bot in this space to read only its full instructions and instructionsVersion, which set_child_instructions needs as expected_version. Call this before changing the bots you manage.",
     inputSchema: {
       type: "object",
       properties: {
         bot_id: {
           type: "string",
           description:
-            "A bot you created, to read its instructions and version instead of the roster.",
+            "A bot in this space, to read its instructions and version instead of the roster.",
         },
       },
       additionalProperties: false,
@@ -1303,7 +1473,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "set_child_instructions",
     description:
-      "Replace the instructions of a bot you created. Identify it by bot_id or bot_name (exact). Only bots you created. Pass expected_version from list_fleet with that bot_id. One instruction edit per bot per run. Needs the owner's approval.",
+      "Replace the instructions of a bot in this space. Identify it by bot_id or bot_name (exact). Pass expected_version from list_fleet with that bot_id. One instruction edit per bot per run. Needs the owner's approval.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1321,7 +1491,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "set_child_bot_model",
     description:
-      "Set the model of a bot you created, or reset it to the default with clear: true. Identify it by bot_id or bot_name (exact). Only bots you created. Needs the owner's approval.",
+      "Set the model of a bot in this space, or reset it to the default with clear: true. Identify it by bot_id or bot_name (exact). Needs the owner's approval.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1337,13 +1507,13 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "create_child_routine",
     description:
-      "Schedule a routine that wakes a bot you created in its own thread. Identify it by bot_id or bot_name (exact). Only bots you created. Repeats: cron or every/unit (min 1 minute). One-shot: runAt, delayMinutes, or delaySeconds. Needs the owner's approval.",
+      "Schedule a routine that wakes a bot in this space in its own thread. Identify it by bot_id or bot_name (exact). Repeats: cron or every/unit (min 1 minute). One-shot: runAt, delayMinutes, or delaySeconds. Needs the owner's approval.",
     inputSchema: createChildRoutineInputSchema,
   },
   {
     name: "archive_bot",
     description:
-      "Archive a bot this bot created. Archiving stops its work and routines, hides it from the active list, and preserves its conversation, memory, and files for the user to restore or delete later. confirm_name must exactly match its name. This cannot archive you, bots the user created, or bots another bot created.",
+      "Archive another bot in this space. Archiving stops its work and routines, hides it from the active list, and preserves its conversation, memory, and files for the user to restore or delete later. confirm_name must exactly match its name. This cannot archive you.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1351,7 +1521,7 @@ export const builtinAgentTools: ConnectorTool[] = [
         bot_id: {
           type: "string",
           description:
-            "Optional bot id. If omitted, the unique bot this bot created with confirm_name is archived.",
+            "Optional bot id. If omitted, the unique bot in this space with confirm_name is archived.",
         },
       },
       required: ["confirm_name"],
@@ -1382,10 +1552,15 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "handoff_to_bot",
     description:
-      "In a group chat only: transfer a genuinely distinct next stage to another current member. Appends a visible handoff and starts that bot asynchronously. Do not hand a stage back merely to report or repeat the same work; post results in the shared thread.",
+      "Transfer a genuinely distinct next stage to another current group member. In a group, stay in that group. Outside a group, supply group_id from your groups list to coordinate there. Appends a visible handoff and starts that bot asynchronously. Do not hand a stage back merely to report or repeat the same work; post results in the shared thread.",
     inputSchema: {
       type: "object",
       properties: {
+        group_id: {
+          type: "string",
+          description:
+            "Explicit destination from your groups list; required outside a group, omitted in a group.",
+        },
         bot_id: { type: "string", description: "Target member bot id." },
         confirm_name: {
           type: "string",
