@@ -349,8 +349,8 @@ export function AskCard({
           <Trans>No longer active</Trans>
         </div>
       ) : ownerOnly ? null : displayActions?.length ? (
-        <div className="mt-3.5">
-          <div className="flex flex-wrap gap-2">
+        <>
+          <div className="mt-3.5 flex flex-wrap gap-2">
             {displayActions.map((action) => (
               <Button
                 key={action.id}
@@ -385,7 +385,7 @@ export function AskCard({
               <Trans>Lasting rules are in Settings → Approvals.</Trans>
             </p>
           ) : null}
-        </div>
+        </>
       ) : secretInput ? (
         <form
           className="mt-3.5 flex flex-col gap-2"
