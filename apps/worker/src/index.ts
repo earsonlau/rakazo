@@ -80,6 +80,7 @@ import {
   createThreadEvents,
   describeRowSecurity,
   installSecurityEventStore,
+  isPoolCheckoutTimeout,
   isTooManyDatabaseConnections,
   parsePositiveInteger,
   pushSessionExpiresAt,
@@ -144,7 +145,7 @@ async function main() {
   const { key: deploymentModelKey, configured: deploymentModelConfigured } =
     resolveDeploymentModel();
   const sandboxProvider = resolveSandboxProvider(process.env);
-  const sandbox = createRunSandbox(sandboxProvider, {
+  const sandbox = await createRunSandbox(sandboxProvider, {
     ...sandboxProviderOptionsFromEnv(process.env),
     supervisorUrl: process.env.SANDBOX_SUPERVISOR_URL ?? "http://127.0.0.1:7091",
     supervisorToken: sandboxProvider === "docker" ? resolveSupervisorToken(process.env) : undefined,
@@ -278,7 +279,6 @@ async function main() {
     ].filter(Boolean),
     secretStore: secrets,
     mcpAllowPrivateEndpoint: process.env.MCP_ALLOW_PRIVATE_ENDPOINT === "true",
-    mcpStdio,
     deploymentModelKey,
     deploymentModelConfigured,
     dataDir,
@@ -382,19 +382,20 @@ async function main() {
   };
   process.once("SIGTERM", () => void stop());
   process.once("SIGINT", () => void stop());
-  // graphile-worker fires completeJob() without awaiting it. When pool.connect()
-  // then hits Postgres 53300, that rejection is unhandled. Exiting here is the
-  // crash loop: Docker restarts the process before Postgres has reaped the old
-  // backends, so the next boot cannot connect either. Stay up on that rejection
-  // only — do not resume after uncaughtException (Node leaves the process in an
-  // undefined state).
+  // graphile-worker fires completeJob()/failJobs() without awaiting them. When
+  // pool.connect() then hits Postgres 53300 or a saturated pool's checkout timeout,
+  // that rejection is unhandled. Exiting on 53300 is a crash loop: Docker restarts
+  // the process before Postgres has reaped the old backends. Exiting on a checkout
+  // timeout aborts every active run over one transient stall. Stay up on those
+  // rejections only — do not resume after uncaughtException (Node leaves the
+  // process in an undefined state).
   process.on("uncaughtException", (error) => {
     logger.error("uncaughtException", error);
     void stop().finally(() => process.exit(1));
   });
   process.on("unhandledRejection", (reason) => {
     logger.error("unhandledRejection", reason);
-    if (isTooManyDatabaseConnections(reason)) return;
+    if (isTooManyDatabaseConnections(reason) || isPoolCheckoutTimeout(reason)) return;
     void stop().finally(() => process.exit(1));
   });
 

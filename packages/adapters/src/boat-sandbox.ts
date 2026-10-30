@@ -46,7 +46,12 @@ import {
 } from "./boat-errors.js";
 import { normalizeWorkspacePath, shellQuote, workspacePath } from "./computer-support.js";
 import { PORTABLE_TRANSFER_BATCH_BYTES } from "./computer-workspace.js";
-import { LinuxDesktop, PREPARE_LINUX_DESKTOP, VERIFY_LINUX_DESKTOP } from "./linux-desktop.js";
+import {
+  LinuxDesktop,
+  onBotScreen,
+  PREPARE_LINUX_DESKTOP,
+  VERIFY_LINUX_DESKTOP,
+} from "./linux-desktop.js";
 import { sandboxCommandArgv } from "./sandbox-command-environment.js";
 import { isSandboxGoneError } from "./sandbox-errors.js";
 import { shellExportScript } from "./sandbox-shell-environment.js";
@@ -57,6 +62,7 @@ import {
   workspaceSaveFindExpression,
 } from "./workspace-save-policy.js";
 
+const DISPLAY_START = 20;
 const BOAT_API_BASE = "https://boat.dev/api/v1";
 const BOAT_WORKSPACE = "/home/user/rakazo-home";
 const BOAT_BROWSER_PROFILES = `${BOAT_WORKSPACE}/.browser-profiles`;
@@ -148,7 +154,7 @@ export class BoatSandboxProvider implements SandboxProvider {
       homeDir: "/home/user",
       workspaceDir: BOAT_WORKSPACE,
       browserProfilesDir: BOAT_BROWSER_PROFILES,
-      displayStart: 20,
+      displayStart: DISPLAY_START,
       portStart: 6100,
       // The provider port proxy reaches the isolated sandbox through its network interface.
       bindHost: "0.0.0.0",
@@ -464,9 +470,10 @@ export class BoatSandboxProvider implements SandboxProvider {
 
   async *execute(
     computer: ComputerRef,
-    request: CommandRequest,
+    requested: CommandRequest,
     context: AdapterContext,
   ): AsyncIterable<ProcessEvent> {
+    const request = onBotScreen(requested, context, DISPLAY_START);
     if (context.signal.aborted) {
       yield { type: "stderr", data: "command aborted\n" };
       yield { type: "exit", code: 130 };
@@ -1032,10 +1039,10 @@ export class BoatSandboxProvider implements SandboxProvider {
       });
     } catch {
       if (signal.aborted) throw signal.reason;
-      throw new Error("Boat file upload failed");
+      throw new SandboxUnresponsiveError("Boat file upload failed");
     }
     await response.body?.cancel().catch(() => undefined);
-    if (!response.ok) throw new Error(`Boat file upload failed (HTTP ${response.status})`);
+    if (!response.ok) throw transferError("upload", response.status);
   }
 
   private async readRemoteFile(
@@ -1155,11 +1162,11 @@ export class BoatSandboxProvider implements SandboxProvider {
       });
     } catch {
       if (downloadSignal.aborted) throw downloadSignal.reason;
-      throw new Error("Boat file download failed");
+      throw new SandboxUnresponsiveError("Boat file download failed");
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => undefined);
-      throw new Error(`Boat file download failed (HTTP ${response.status})`);
+      throw transferError("download", response.status);
     }
     return response;
   }
@@ -1397,6 +1404,12 @@ function logRecovery(
   reason?: string,
 ): void {
   getLogger().warn("sandbox.recover", { provider: "boat", step, ...(reason ? { reason } : {}) });
+}
+
+/** A signed transfer Boat failed on its side is an outage there, like any other Boat call. */
+function transferError(direction: "upload" | "download", status: number): Error {
+  const message = `Boat file ${direction} failed (HTTP ${status})`;
+  return status >= 500 ? new SandboxUnresponsiveError(message) : new Error(message);
 }
 
 /** Boat deletes a stopped sandbox's data after 14 days but keeps the record; it cannot resume. */

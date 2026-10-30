@@ -8,8 +8,9 @@ vi.mock("@rakazo/adapters", async (original) => ({
   previewPluginInstall: preview,
 }));
 
-const { approvedPluginEntries, isAdmin, pluginSubmissionRoutes, reviewPluginSubmission } =
-  await import("./plugin-submissions.js");
+const { approvedPluginEntries, pluginSubmissionRoutes, reviewPluginSubmission } = await import(
+  "./plugin-submissions.js"
+);
 
 const SHA = "a".repeat(40);
 const valid = {
@@ -172,21 +173,6 @@ describe("public plugin submissions", () => {
   });
 });
 
-describe("isAdmin", () => {
-  const users = [
-    { id: "verified", email: "Admin@Example.test", emailVerified: true },
-    { id: "unverified", email: "admin@example.test", emailVerified: false },
-  ];
-
-  it("requires a listed, verified email", async () => {
-    const { prisma } = fakePrisma(users);
-    const deps = { prisma, env: { adminEmails: ["admin@example.test"] } };
-    expect(await isAdmin(deps, "verified")).toBe(true);
-    expect(await isAdmin(deps, "unverified")).toBe(false);
-    expect(await isAdmin({ prisma, env: {} }, "verified")).toBe(false);
-  });
-});
-
 describe("reviewing submissions", () => {
   async function submitted() {
     const { rows, prisma } = fakePrisma();
@@ -242,6 +228,20 @@ describe("reviewing submissions", () => {
         skillCount: 2,
       }),
     ]);
+  });
+
+  it("approves a plugin that leaves out a skill repeating a built-in one", async () => {
+    const { deps, rows } = await submitted();
+    preview.mockResolvedValue({
+      source: { gitUrl: "https://github.com/acme/plugins" },
+      resolvedSha: SHA,
+      mcpServers: [],
+      skills: [{ name: "a" }],
+      skipped: [],
+      builtinNames: ["interrogate"],
+    });
+    await reviewPluginSubmission(deps, { id: "sub-1", decision: "approve" });
+    expect(rows[0]!.status).toBe("approved");
   });
 
   it("refuses a plugin with nothing to install", async () => {

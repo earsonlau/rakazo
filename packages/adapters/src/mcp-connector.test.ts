@@ -588,6 +588,73 @@ describe("MCP connector session cache", () => {
     await connector.close();
   });
 
+  it("records a failed lookup of the bot's servers before the registry drops it", async () => {
+    const append = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      botMcpServer: { findMany: vi.fn().mockRejectedValue(new Error("lookup failed")) },
+      run: { findUnique: vi.fn().mockResolvedValue({ threadId: "thread-1" }) },
+    };
+    const connector = new McpConnector(prisma as never, {} as never, {
+      network: TEST_NETWORK,
+      events: { append },
+    });
+    const context = {
+      spaceId: "w1",
+      userId: "u1",
+      botId: "bot-1",
+      runId: "run-1",
+      signal: new AbortController().signal,
+    } as never;
+
+    await expect(connector.discoverTools(context)).rejects.toThrow("lookup failed");
+    await expect(new ConnectorRegistry([connector]).discoverTools(context)).resolves.toEqual([]);
+
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(append.mock.calls[0]?.[0]).toMatchObject({
+      threadId: "thread-1",
+      runId: "run-1",
+      type: "agent.tool.completed",
+      payload: { name: "mcp__discovery", outcome: "error" },
+    });
+    await connector.close();
+  });
+
+  it("still offers the stand-in tool when closing the failed session throws", async () => {
+    const state = { failNext: false, initializations: 0 };
+    vi.stubGlobal("fetch", mcpFetch(state));
+    const append = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      botMcpServer: { findMany: vi.fn().mockResolvedValue([ASSIGNMENT]) },
+      run: { findUnique: vi.fn().mockResolvedValue({ threadId: "thread-1" }) },
+      mcpServer: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const connector = new McpConnector(prisma as never, {} as never, {
+      network: TEST_NETWORK,
+      events: { append },
+    });
+    const context = {
+      spaceId: "w1",
+      userId: "u1",
+      botId: "bot-1",
+      runId: "run-1",
+      signal: new AbortController().signal,
+    } as never;
+    await expect(connector.discoverTools(context)).resolves.not.toEqual([]);
+
+    state.failNext = true;
+    const close = vi.spyOn(McpSession.prototype, "close").mockRejectedValue(new Error("busy"));
+    try {
+      await expect(connector.discoverTools(context)).resolves.toEqual(unavailableOnly());
+      expect(append.mock.calls.at(-1)?.[0].payload).toMatchObject({
+        name: "mcp__demo__discovery",
+        outcome: "error",
+      });
+    } finally {
+      close.mockRestore();
+    }
+    await connector.close();
+  });
+
   it("redacts credentials of a connect that failed before the session was cached", async () => {
     const localAssignment = {
       ...ASSIGNMENT,
@@ -914,6 +981,14 @@ describe("MCP connector session cache", () => {
         () => Response.json({ error: { code: "model_required" } }, { status: 400 }),
       ],
       ["a redirect", () => new Response(null, { status: 302, headers: { location: "/login" } })],
+      [
+        "a server error page",
+        () =>
+          new Response("<html><title>500 Internal Server Error</title></html>", {
+            status: 500,
+            headers: { "content-type": "text/html" },
+          }),
+      ],
     ])("warns when the endpoint answers with %s", async (_, answer) => {
       vi.stubGlobal(
         "fetch",
@@ -934,8 +1009,13 @@ describe("MCP connector session cache", () => {
       }
     });
 
-    it("still reports an unexpected server failure as an error", async () => {
-      vi.stubGlobal("fetch", mcpFetch({ failNext: true, initializations: 0 }));
+    it("still reports an unexpected failure as an error", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new TypeError("boom");
+        }),
+      );
       const connector = connectorWith(SERVER);
       const error = vi.spyOn(getLogger(), "error");
       try {
