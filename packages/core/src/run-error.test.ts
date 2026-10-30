@@ -201,6 +201,15 @@ describe("normalizeRunError", () => {
       });
     });
 
+    it("treats OpenAI's server-side processing failure as overload", () => {
+      const details =
+        "Codex error: An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 00000000-0000-0000-0000-000000000000 in your message.";
+      expect(normalizeRunError(details)).toEqual({
+        summary: "Your OpenAI is overloaded right now. Try again in a moment.",
+        details,
+      });
+    });
+
     it.each([
       // What the OpenAI and Anthropic SDKs report when a local server is down or the host is unknown.
       "Connection error.",

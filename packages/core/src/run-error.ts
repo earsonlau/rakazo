@@ -1,5 +1,5 @@
 import type { RunErrorKind } from "@rakazo/contracts";
-import { COMPUTER_RATE_LIMIT_ERROR } from "@rakazo/contracts";
+import { COMPUTER_RATE_LIMIT_ERROR, isOpenAiRequestProcessingFailure } from "@rakazo/contracts";
 import { stuckWorkStatusMessages } from "./stuck-work.js";
 
 export const MISSING_TOOL_FINAL_RESPONSE_ERROR =
@@ -447,6 +447,7 @@ export function normalizeRunError(
     status === 502 ||
     status === 503 ||
     status === 529 ||
+    isOpenAiRequestProcessingFailure(signals) ||
     /overload|over capacity|temporarily unavailable|service unavailable/i.test(signals)
   ) {
     summary = translate("{provider} is overloaded right now. Try again in a moment.", { provider });

@@ -1,3 +1,4 @@
+import { normalizeRunError } from "@rakazo/core";
 import { describe, expect, it } from "vitest";
 import {
   isModelCredentialRejected,
@@ -97,6 +98,26 @@ describe("transient model errors", () => {
     ],
   ])("treats %s as permanent", (_label, error) => {
     expect(isTransientModelError(error)).toBe(false);
+  });
+
+  it("keeps a quota failure off the overload sentence and a token-rate limit transient", () => {
+    const quota = {
+      status: 429,
+      message: "You exceeded your current quota, please check your plan and billing details.",
+      code: "insufficient_quota",
+    };
+    expect(isTransientModelError(quota)).toBe(false);
+    const wrapped = `429: ${JSON.stringify({ message: quota.message, code: quota.code })}`;
+    const normalized = normalizeRunError(wrapped);
+    expect(normalized.kind).toBe("credit");
+    expect(normalized.summary).not.toBe(
+      "Your OpenAI is overloaded right now. Try again in a moment.",
+    );
+    expect(
+      isTransientModelError(
+        "Rate limit reached for example-model in organization org-example on tokens per min (TPM): Limit 60000, Used 51552, Requested 12568. Please try again in 4.12s. Visit https://platform.openai.com/account/rate-limits to learn more. You can increase your rate limit by adding a payment method to your account at https://platform.openai.com/account/billing.",
+      ),
+    ).toBe(true);
   });
 
   it.each([
