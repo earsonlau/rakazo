@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { HostScreen } from "@rakazo/adapters/host-screen";
 import { startUserDeviceClient } from "@rakazo/adapters/user-device-client";
 import type { DesktopReachability, DesktopSetup, RakazoDesktopDevice } from "@rakazo/contracts";
 import { parseServerHeaders } from "@rakazo/contracts";
@@ -10,14 +11,17 @@ import type { Session } from "electron";
 import {
   app,
   BrowserWindow,
+  desktopCapturer,
   dialog,
   ipcMain,
   Menu,
   net,
+  powerMonitor,
   safeStorage,
   screen,
   session,
   shell,
+  systemPreferences,
 } from "electron";
 import type { AppDocumentState } from "./app-document-state.js";
 import { waitForMountedAppDocument } from "./app-document-state.js";
@@ -28,6 +32,7 @@ import { createBadgeHandler } from "./badge.js";
 import { openBrowserAuth } from "./browser-auth.js";
 import { DOCKER_INSTALL_LINKS, isDesktopSetupLink, runDocker } from "./docker-cli.js";
 import { prepareHostComputer } from "./host-computer.js";
+import { createDesktopHostScreen, screenDriverInstaller } from "./host-screen.js";
 import { saveLocalComputerHost } from "./local-settings.js";
 import {
   LocalStackController,
@@ -39,6 +44,7 @@ import {
 } from "./local-stack.js";
 import {
   configureDesktopMonitoring,
+  desktopReportsErrors,
   disableDesktopMonitoring,
   installDesktopEarlyErrorReporting,
   refreshDesktopMonitoringUser,
@@ -119,8 +125,10 @@ let warmWindowTimer: NodeJS.Timeout | undefined;
 let liveProbeWindows = 0;
 const WARM_WINDOW_TTL_MS = warmWindowTtlMs(process.env.RAKAZO_WARM_WINDOW_TTL_MS);
 
+const reportsErrors = desktopReportsErrors(app.isPackaged);
 const updaterEnvironment = {
-  packaged: app.isPackaged,
+  // A `--dir` build has no update feed to read.
+  packaged: app.isPackaged && existsSync(path.join(process.resourcesPath, "app-update.yml")),
   version: app.getVersion(),
   disabled: process.env.RAKAZO_DISABLE_AUTO_UPDATE === "1",
 };
@@ -141,6 +149,7 @@ let localStack: LocalStackController;
 let hostComputer: Awaited<ReturnType<typeof prepareHostComputer>> | undefined;
 let requestingComputerAccess = false;
 let userDevices: UserDeviceAccess | undefined;
+let hostScreen: HostScreen | undefined;
 
 markOnce("rk:main:module-evaluated");
 if (PERFORMANCE_USER_DATA) {
@@ -910,6 +919,7 @@ function activateDesktopMonitoring(url: string | undefined, targetSession?: Sess
   void configureDesktopMonitoring(fetchMonitoringConfig, {
     version: app.getVersion(),
     base: url,
+    reportsErrors,
   });
 }
 
@@ -1164,6 +1174,22 @@ app.whenReady().then(async () => {
   } catch {
     /* Local access fails closed; Docker remains available. */
   }
+  hostScreen = createDesktopHostScreen({
+    platform: process.platform,
+    driver: screenDriverInstaller({
+      dir: path.join(userDataDir, "screen-driver", "bin"),
+      fetch: (url) => net.fetch(url),
+    }),
+    home: path.join(userDataDir, "screen-driver", "home"),
+    permissions: {
+      isTrustedAccessibilityClient: (prompt) =>
+        systemPreferences.isTrustedAccessibilityClient(prompt),
+      getMediaAccessStatus: (type) => systemPreferences.getMediaAccessStatus(type),
+      requestScreenCapture: () =>
+        desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } }),
+    },
+    locked: () => powerMonitor.getSystemIdleState(1) === "locked",
+  });
   userDevices = createUserDeviceAccess({
     userDataDir,
     cipher: deviceTokenCipher(),
@@ -1184,6 +1210,7 @@ app.whenReady().then(async () => {
         serverUrl: origin,
         token,
         root: path.join(userDataDir, "computers"),
+        screen: hostScreen,
         ...events,
       }),
   });
@@ -1391,6 +1418,7 @@ app.whenReady().then(async () => {
   }
   ipcMain.handle("desktop.platform", () => process.platform);
   ipcMain.handle("desktop.passkeys.rpIds", () => passkeyRpIds);
+  ipcMain.handle("desktop.monitoring.enabled", () => reportsErrors);
   ipcMain.handle("desktop.window.close", (event) => {
     windowFrom(event)?.close();
   });
@@ -1620,5 +1648,6 @@ app.on("before-quit", () => {
   hostComputer?.activate(false);
   void hostComputer?.close();
   userDevices?.close();
+  void hostScreen?.close();
   localStack?.abort();
 });

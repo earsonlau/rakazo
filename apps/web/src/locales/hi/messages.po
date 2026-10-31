@@ -1498,6 +1498,10 @@ msgstr "कंप्यूटर"
 msgid "Computer failed to boot"
 msgstr "कंप्यूटर शुरू नहीं हो सका"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "कंप्यूटर के बचे घंटे"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "कंप्यूटर निष्क्रिय है"
@@ -3040,6 +3044,10 @@ msgstr ""
 msgid "Git event"
 msgstr ""
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "होम पर जाएँ"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "मालिक"
 msgid "Page {page} of {count}"
 msgstr "पृष्ठ {page} / {count}"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "पेज नहीं मिला"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr ""
@@ -5273,6 +5285,10 @@ msgstr "सर्वर URL"
 msgid "Settings"
 msgstr "सेटिंग्स"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "सेटिंग्स अपडेट की गईं"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "कार्यस्थान"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "बोलें"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "केवल बोलें"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"

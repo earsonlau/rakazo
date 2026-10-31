@@ -4,12 +4,14 @@ import type {
   BillingPrice,
   BillingProvider,
   BillingSubscriptionSnapshot,
+  SandboxProvider,
 } from "@rakazo/adapter-kit";
 import {
   BillingCheckoutCompletedError,
   BillingCustomerNotFoundError,
   BillingNoMonthlyCreditsError,
 } from "@rakazo/adapter-kit";
+import { sandboxAllowance, sandboxHoursLeft } from "@rakazo/adapters";
 import type { Actor, BillingStatus } from "@rakazo/contracts";
 import { BYOK_MONTHLY_PRICE_CENTS } from "@rakazo/contracts";
 import type { BillingAccount, PrismaClient } from "@rakazo/db";
@@ -48,6 +50,7 @@ export type BillingClient = "mobile" | undefined;
 /** Product-side billing: access rules, checkout, and pull-based sync from the provider. */
 export interface BillingService {
   readonly modelCreditsEnabled: boolean;
+  readonly referralsEnabled: boolean;
   status(actor: Actor): Promise<BillingStatus>;
   selectFunding(
     actor: Actor,
@@ -85,6 +88,8 @@ function byokTrialAvailable(
 export function createBillingService(deps: {
   prisma: PrismaClient;
   provider: BillingProvider;
+  /** Prices computer time for the monthly allowance; without it none is shown. */
+  sandbox?: SandboxProvider;
   managedModelsAvailable?: boolean;
   /** The session cookie lives on the web origin, which also proxies /api to this server. */
   webOrigin: string;
@@ -267,6 +272,7 @@ export function createBillingService(deps: {
 
   return {
     modelCreditsEnabled: modelCredits,
+    referralsEnabled: referrals.enabled,
     async selectFunding(actor, funding, client) {
       const { organizationId } = await managedOrganization(actor);
       const account = await creditAccount(prisma, organizationId);
@@ -346,9 +352,10 @@ export function createBillingService(deps: {
       if (modelCredits) {
         const { organizationId, isOwner } = await organization(actor);
         await expireModelCredits(prisma, organizationId);
-        const [credits, account] = await Promise.all([
+        const [credits, account, computerAllowance] = await Promise.all([
           creditAccount(prisma, organizationId),
           billingAccountForOrganization(prisma, organizationId),
+          deps.sandbox ? sandboxAllowance({ prisma, sandbox: deps.sandbox }, organizationId) : null,
         ]);
         const freeUntil =
           credits.mode === "byok" &&
@@ -386,6 +393,7 @@ export function createBillingService(deps: {
           currentPeriodEndsAt: account?.currentPeriodEndsAt?.toISOString() ?? null,
           cancelAtPeriodEnd: account?.cancelAtPeriodEnd ?? false,
           hasCustomer: Boolean(account),
+          computerHoursLeft: computerAllowance && sandboxHoursLeft(computerAllowance),
           referral: await referrals.status(organizationId, isOwner),
         };
       }

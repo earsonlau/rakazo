@@ -42,11 +42,12 @@ const APPROVAL_REQUIRED_BUILTIN_TOOLS = new Set([
   "cloud_agent_reply",
   "cloud_agent_cancel",
   "user_computer_shell",
+  "user_computer_observe",
+  "user_computer_act",
 ]);
 const EXPLICIT_APPROVAL_BUILTIN_TOOLS = new Set([
   "respond_agent_connection",
   "create_space",
-  "propose_instructions_update",
   "create_group",
   "update_group",
   "set_child_instructions",
@@ -234,6 +235,7 @@ const OWN_STATE_RESULT_TOOLS = new Set([
   "search_history",
   "skill_read",
   "task_catalog",
+  "update_preferences",
   "write_file",
 ]);
 

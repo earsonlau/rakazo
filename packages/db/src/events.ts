@@ -387,8 +387,7 @@ export async function clearThread(
       select: { id: true, taskId: true, userId: true, spaceId: true },
     });
     const now = new Date();
-    const runIds = activeRuns.map((run) => run.id);
-    await cancelRunsInTransaction(tx, activeRuns, now);
+    const runIds = (await cancelRunsInTransaction(tx, activeRuns, now)).map((run) => run.id);
     // Expire as tombstones so a still-open provider screen claim cannot reset fencing to 1.
     await expireComputerExecutionLeases(tx, { runId: { in: runIds } });
     await tx.computer.updateMany({
@@ -888,7 +887,7 @@ async function commitAnswerRunInput(
     if (!approvalEffect) return null;
     if (pendingAsk.instructionUpdate) {
       if (
-        approvalEffect.kind !== "propose_instructions_update" ||
+        approvalEffect.kind !== "update_bot" ||
         pendingAsk.instructionUpdate.botId !== run.botId ||
         (approvalAnswer !== "allow" && approvalAnswer !== "deny") ||
         run.userId !== input.answeredByUserId
@@ -964,11 +963,6 @@ async function commitAnswerRunInput(
           },
         });
       }
-      if (approvalAnswer === "deny")
-        await tx.bot.updateMany({
-          where: { id: run.botId, pendingInstructionsRunId: input.runId },
-          data: { pendingInstructionsRunId: null },
-        });
     }
     const allowed = approvalAnswer === "allow" || approvalAnswer === "always";
     await tx.externalEffect.update({

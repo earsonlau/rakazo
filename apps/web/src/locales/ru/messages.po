@@ -1498,6 +1498,10 @@ msgstr "Компьютер"
 msgid "Computer failed to boot"
 msgstr "Компьютер не смог загрузиться"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "Осталось часов компьютера"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "Компьютер спит"
@@ -3040,6 +3044,10 @@ msgstr "Подготовка"
 msgid "Git event"
 msgstr "Git-событие"
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "На главную"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "Владелец"
 msgid "Page {page} of {count}"
 msgstr "Страница {page} из {count}"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "Страница не найдена"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr "Инцидент PagerDuty"
@@ -5273,6 +5285,10 @@ msgstr "URL-адрес сервера"
 msgid "Settings"
 msgstr "Настройки"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "Настройки обновлены"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "Пространства"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "Озвучить"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "Только озвучить"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"
