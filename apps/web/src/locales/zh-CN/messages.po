@@ -1498,6 +1498,10 @@ msgstr "电脑"
 msgid "Computer failed to boot"
 msgstr "电脑启动失败"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "剩余电脑时长"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "电脑已休眠"
@@ -3040,6 +3044,10 @@ msgstr "正在准备"
 msgid "Git event"
 msgstr "Git 事件"
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "返回首页"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "所有者"
 msgid "Page {page} of {count}"
 msgstr "第 {page} 页，共 {count} 页"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "找不到页面"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr "PagerDuty 事件"
@@ -5273,6 +5285,10 @@ msgstr "服务器 URL"
 msgid "Settings"
 msgstr "设置"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "设置已更新"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "工作区"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "朗读"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "仅朗读"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"

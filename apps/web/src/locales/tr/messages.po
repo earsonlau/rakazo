@@ -1498,6 +1498,10 @@ msgstr "Bilgisayar"
 msgid "Computer failed to boot"
 msgstr "Bilgisayar başlatılamadı"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "Kalan bilgisayar saati"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "Bilgisayar uykuda"
@@ -3040,6 +3044,10 @@ msgstr ""
 msgid "Git event"
 msgstr ""
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "Ana sayfaya git"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "Sahip"
 msgid "Page {page} of {count}"
 msgstr "Sayfa {page} / {count}"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "Sayfa bulunamadı"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr ""
@@ -5273,6 +5285,10 @@ msgstr "Sunucu URL'si"
 msgid "Settings"
 msgstr "Ayarlar"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "Ayarlar güncellendi"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "Alanlar"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "Seslendir"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "Yalnızca seslendir"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"

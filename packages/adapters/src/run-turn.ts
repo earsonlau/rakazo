@@ -5,6 +5,7 @@ import {
   ModelAccountError,
   ModelOutputError,
   runContinueJob,
+  SandboxAllowanceUsedError,
   SandboxRateLimitError,
   TransientModelError,
 } from "@rakazo/adapter-kit";
@@ -34,7 +35,7 @@ import {
 import {
   backOffRoutineAfterAccountError,
   clearRoutineBackoff,
-  isModelAccountRefusal,
+  modelAccountRefusal,
 } from "./routine-backoff.js";
 import type { RunContext } from "./run-context.js";
 import { persistTurnCheckpoint } from "./run-context.js";
@@ -856,7 +857,11 @@ export async function failRun(
   try {
     ctx.computer.lazy.throwIfFailed();
   } catch (computerError) {
-    if (!(computerError instanceof SandboxRateLimitError)) throw computerError;
+    if (
+      !(computerError instanceof SandboxRateLimitError) &&
+      !(computerError instanceof SandboxAllowanceUsedError)
+    )
+      throw computerError;
     error = computerError;
   }
   if (!ctx.state.terminalCheckpointComplete) {
@@ -899,11 +904,12 @@ export async function failRun(
     error instanceof TransientModelError ||
     error instanceof ModelAccountError ||
     error instanceof ModelOutputError ||
-    error instanceof SandboxRateLimitError
+    error instanceof SandboxRateLimitError ||
+    error instanceof SandboxAllowanceUsedError
   ) {
     // Provider outages that outlasted retries, provider accounts, plans and model
-    // choices the user fixes, unusable model output and the computer provider's own
-    // rate limit are not server faults; the run error already tells the user what to do.
+    // choices the user fixes, unusable model output, the computer provider's own rate limit
+    // and a spent computer allowance are not server faults; the run error tells the user.
     getLogger().warn("run.failed", {
       "run.outcome": "failed",
       "run.failure": error.name,
@@ -936,13 +942,10 @@ export async function failRun(
     ).catch((returnError) => getLogger().error("bot message failure return", returnError));
   }
   // A refusal of the deployment's own key is the operator's problem, not the user's.
-  if (
-    run.trigger === "routine" &&
-    run.routineId &&
-    model.ownCredential &&
-    isModelAccountRefusal(error)
-  ) {
-    await backOffRoutineAfterAccountError(deps, run.routineId);
+  const refusal =
+    run.trigger === "routine" && model.ownCredential ? modelAccountRefusal(error) : undefined;
+  if (run.routineId && refusal) {
+    await backOffRoutineAfterAccountError(deps, run.routineId, new Date(), refusal.resetAt);
   }
   const retrying = !failed.continuationRunId && (await scheduleRoutineRetry(deps, run, error));
   if (runSendsFinishNotification(run.trigger) && !failed.continuationRunId && !retrying) {

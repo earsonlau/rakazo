@@ -18,6 +18,7 @@ import {
   ARTIFACT_NAME_MAX_LENGTH,
   ATTACHMENT_COUNT_CEILING,
 } from "./attachments.js";
+import { AuditEventListInputSchema, AuditEventPageSchema } from "./audit-events.js";
 import {
   BoardEventSchema,
   BoardSchema,
@@ -127,7 +128,6 @@ import {
   SpaceSchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
-  ThinkingLevelSchema,
   ThreadMessagePageSchema,
   ThreadSnapshotSchema,
   TimeZoneSchema,
@@ -143,7 +143,7 @@ import {
   VoiceStatusSchema,
 } from "./domain.js";
 import { ComputerCommandSchema, ProductEventSchema } from "./events.js";
-import { Id, IsoDate } from "./ids.js";
+import { Id, IsoDate, ThinkingLevelSchema } from "./ids.js";
 import {
   IntegrationProviderConfigSchema,
   IntegrationSetupStateSchema,
@@ -190,38 +190,51 @@ const structuredMentionTarget = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("connector"), id: Id }),
 ]);
 
-const threadSendInput = threadTarget
-  .safeExtend({
-    imageHandling: z.enum(["confirm", "file"]).optional(),
-    text: z.string().optional(),
-    artifactIds: z.array(Id).max(ATTACHMENT_COUNT_CEILING).optional(),
-    /** Bare bot ids (legacy) or typed mention chips from the composer. */
-    mentions: z
-      .array(z.union([Id, structuredMentionTarget]))
-      .max(64)
-      .optional(),
-    replyToMessageId: Id.optional(),
-    replyQuote: z.string().trim().min(1).max(REPLY_QUOTE_MAX_LENGTH).optional(),
-    clientNonce: z.string().min(1).max(200).optional(),
-  })
-  .superRefine((input, ctx) => {
-    const text = input.text?.trim() ?? "";
-    const artifactIds = input.artifactIds ?? [];
-    if (!text && artifactIds.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Provide text or at least one attachment",
-        path: ["text"],
-      });
-    }
-    if (input.replyQuote && !input.replyToMessageId) {
-      ctx.addIssue({
-        code: "custom",
-        message: "replyQuote requires replyToMessageId",
-        path: ["replyQuote"],
-      });
-    }
-  });
+const threadSendFields = threadTarget.safeExtend({
+  imageHandling: z.enum(["confirm", "file"]).optional(),
+  text: z.string().optional(),
+  artifactIds: z.array(Id).max(ATTACHMENT_COUNT_CEILING).optional(),
+  /** Bare bot ids (legacy) or typed mention chips from the composer. */
+  mentions: z
+    .array(z.union([Id, structuredMentionTarget]))
+    .max(64)
+    .optional(),
+  replyToMessageId: Id.optional(),
+  replyQuote: z.string().trim().min(1).max(REPLY_QUOTE_MAX_LENGTH).optional(),
+  clientNonce: z.string().min(1).max(200).optional(),
+});
+
+const threadSendInput = threadSendFields.superRefine((input, ctx) => {
+  const text = input.text?.trim() ?? "";
+  const artifactIds = input.artifactIds ?? [];
+  if (!text && artifactIds.length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Provide text or at least one attachment",
+      path: ["text"],
+    });
+  }
+  if (input.replyQuote && !input.replyToMessageId) {
+    ctx.addIssue({
+      code: "custom",
+      message: "replyQuote requires replyToMessageId",
+      path: ["replyQuote"],
+    });
+  }
+});
+
+const threadSendOutput = z.object({
+  taskId: Id,
+  runId: Id,
+  seq: z.number().int(),
+  runIds: z.array(Id).optional(),
+});
+
+/** Without text or attachments, only the routines run and no message is saved. */
+const threadSendWithRoutinesInput = threadSendFields.safeExtend({
+  clientNonce: z.string().min(1).max(200),
+  routineIds: z.array(Id).min(1).max(64),
+});
 
 const spaceName = z.string().trim().min(1).max(60);
 
@@ -317,6 +330,10 @@ export const appContract = {
   /** Deployment-owner view of the append-only security event log, newest first. */
   security: {
     events: oc.input(SecurityEventListInputSchema).output(z.array(SecurityEventSchema)),
+  },
+  /** The organization's audit log, newest first. Organization owners and admins only. */
+  audit: {
+    events: oc.input(AuditEventListInputSchema).output(AuditEventPageSchema),
   },
   /**
    * Deployment-owner product updates. When the Compose updater sidecar is reachable, these proxy
@@ -506,14 +523,15 @@ export const appContract = {
     subscribe: oc
       .input(threadTarget.safeExtend({ cursor: z.number().int().min(-1) }))
       .output(eventIterator(ProductEventSchema)),
-    send: oc.input(threadSendInput).output(
-      z.object({
-        taskId: Id,
-        runId: Id,
-        seq: z.number().int(),
-        runIds: z.array(Id).optional(),
-      }),
-    ),
+    send: oc.input(threadSendInput).output(threadSendOutput),
+    /**
+     * A send that also test-runs the mentioned routines: the message and every run commit
+     * together, keyed by the nonce. A separate procedure, because an API without it must
+     * reject the call rather than strip the routines and send only the text.
+     */
+    sendWithRoutines: oc
+      .input(threadSendWithRoutinesInput)
+      .output(z.object({ routineRunIds: z.array(Id), send: threadSendOutput.optional() })),
     react: oc
       .input(
         threadTarget.safeExtend({

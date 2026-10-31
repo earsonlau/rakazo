@@ -11,6 +11,7 @@ import {
   toolRequiresExplicitApproval,
 } from "@rakazo/core";
 import { urlSite } from "@rakazo/core/egress";
+import { USER_COMPUTER_SCREEN_TOOLS, userComputerAppName } from "./run-tools-user-computer.js";
 
 export const MAX_APPROVAL_SUMMARY_LENGTH = 500;
 export const MAX_APPROVAL_DETAIL_LENGTH = 4_000;
@@ -23,8 +24,8 @@ export const SITE_SENDING_TOOLS: ReadonlySet<string> = new Set(["web_fetch", "pa
 export type FleetCardSummary = { title: string; lines: string[] };
 
 /**
- * The instruction card shows the whole new text, like `propose_instructions_update`, so its detail
- * holds the longest instructions plus the two length lines above them.
+ * The child instruction card shows the whole new text, so its detail holds the longest
+ * instructions plus the two length lines above them.
  */
 export function approvalDetailLength(toolName: string): number {
   return toolName === "set_child_instructions"
@@ -81,7 +82,8 @@ export function buildApprovalAskBlock(
       ],
     };
   }
-  if (toolName === "propose_instructions_update") {
+  // Only an instruction change held for the owner carries the text it replaces.
+  if (toolName === "update_bot" && typeof args.previousInstructions === "string") {
     const before = redactSecrets(String(args.previousInstructions ?? ""), secrets);
     const after = redactSecrets(String(args.instructions ?? ""), secrets);
     const reason = redactSecrets(String(args.reason), secrets);
@@ -101,6 +103,29 @@ export function buildApprovalAskBlock(
       actions: [
         { id: "allow", label: "Apply" },
         { id: "deny", label: "Dismiss" },
+      ],
+    };
+  }
+  if (USER_COMPUTER_SCREEN_TOOLS.has(toolName)) {
+    const app = userComputerAppName(args.app).replace(
+      new RegExp(CARD_TITLE_ESCAPED_CHARACTERS, "g"),
+      "\\$&",
+    );
+    const steps = Array.isArray(args.actions) ? args.actions.map(screenActionLine) : [];
+    return {
+      kind: "ask",
+      approvalEffectId: effectId,
+      text: `Use ${app || "an app"} on your computer?`,
+      ...(steps.length
+        ? {
+            detail: truncate(redactSecrets(steps.join("\n"), secrets), MAX_APPROVAL_DETAIL_LENGTH),
+            detailFormat: "code" as const,
+          }
+        : {}),
+      status: "pending",
+      actions: [
+        { id: "allow", label: "Allow for this chat" },
+        { id: "deny", label: "Deny" },
       ],
     };
   }
@@ -255,4 +280,30 @@ function pickScopeLabel(args: Record<string, unknown>): string | undefined {
 
 function truncate(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
+}
+
+function screenActionLine(value: unknown): string {
+  const action = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const at =
+    action.element !== undefined
+      ? ` [${String(action.element)}]`
+      : action.x !== undefined
+        ? ` ${String(action.x)},${String(action.y)}`
+        : "";
+  switch (action.kind) {
+    case "type":
+      return `type ${JSON.stringify(String(action.text ?? ""))}${at}`;
+    case "set":
+      return `set${at} to ${JSON.stringify(String(action.value ?? ""))}`;
+    case "key":
+      return `key ${[...(Array.isArray(action.modifiers) ? action.modifiers : []), action.key].join("+")}`;
+    case "scroll":
+      return `scroll ${String(action.direction ?? "")}${at}`;
+    case "menu":
+      return `menu ${(Array.isArray(action.path) ? action.path : []).join(" > ")}`;
+    case "wait":
+      return `wait ${String(action.ms ?? 0)}ms`;
+    default:
+      return `${String(action.kind ?? "action")}${at}`;
+  }
 }
