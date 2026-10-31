@@ -1498,6 +1498,10 @@ msgstr "Computador"
 msgid "Computer failed to boot"
 msgstr "Falha ao inicializar o computador"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "Horas de computador restantes"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "O computador está dormindo"
@@ -3040,6 +3044,10 @@ msgstr ""
 msgid "Git event"
 msgstr ""
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "Ir para o início"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "Proprietário"
 msgid "Page {page} of {count}"
 msgstr "Página {page} de {count}"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "Página não encontrada"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr ""
@@ -5273,6 +5285,10 @@ msgstr "URL do servidor"
 msgid "Settings"
 msgstr "Configurações"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "Configurações atualizadas"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "Espaços"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "Falar"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "Falar apenas"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"

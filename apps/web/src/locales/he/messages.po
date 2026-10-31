@@ -1498,6 +1498,10 @@ msgstr "מחשב"
 msgid "Computer failed to boot"
 msgstr "הפעלת המחשב נכשלה"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "שעות מחשב שנותרו"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "המחשב במצב שינה"
@@ -3040,6 +3044,10 @@ msgstr "מתכונן"
 msgid "Git event"
 msgstr "אירוע Git"
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "לדף הבית"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "בעלים"
 msgid "Page {page} of {count}"
 msgstr "עמוד {page} מתוך {count}"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "הדף לא נמצא"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr "תקרית PagerDuty"
@@ -5273,6 +5285,10 @@ msgstr "URL של השרת"
 msgid "Settings"
 msgstr "הגדרות"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "ההגדרות עודכנו"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "מרחבים"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "הקראה"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "הקראה בלבד"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"

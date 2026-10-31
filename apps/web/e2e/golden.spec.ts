@@ -174,10 +174,22 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await accountLabel.clear();
   await accountLabel.pressSequentially(`${accountName}overflow`);
   await expect(accountLabel).toHaveValue(accountName);
+  const windowKeys = await page.evaluateHandle(() => {
+    const keys: string[] = [];
+    window.addEventListener("keydown", (event) => keys.push(event.key));
+    return keys;
+  });
+  // These synthetic keyboard events exercise the browser event flags; they do not start an OS IME.
+  for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
+    await accountLabel.dispatchEvent("keydown", { key: "Enter", ...composition });
+    await accountLabel.dispatchEvent("keydown", { key: "Escape", ...composition });
+    expect(await windowKeys.evaluate((keys) => keys.includes("Escape"))).toBe(false);
+    await expect(accountLabel).toBeFocused();
+  }
   const renamed = page.waitForResponse(
     (response) => response.url().includes("connections/rename") && response.ok(),
   );
-  await detail.getByLabel("Account label").nth(1).blur();
+  await accountLabel.press("Enter");
   await renamed;
   await expect(detail.getByLabel("Account label").nth(1)).toHaveValue(accountName);
   await captureScreenshot(page, testInfo, "11a2-multi-account-plugins");
@@ -385,6 +397,9 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   await expect(holdToTalk).toBeVisible();
   await composer.fill("Use the newer report and keep the answer short.");
   await expect(holdToTalk).toHaveCount(0);
+  // Stop can arrive over the live stream before the first send returns; Send stays disabled
+  // until then, and Tab would skip it.
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
   await composer.press("Tab");
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");

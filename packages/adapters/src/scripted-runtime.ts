@@ -165,7 +165,10 @@ export function inferScript(
   prompt: string,
   resumeFromCheckpoint?: string,
 ): NonNullable<AgentRunRequest["script"]> {
-  const lower = prompt.toLowerCase();
+  // A bot-message wake embeds the sender's name and id around the peer's words, and a
+  // generated id can contain a journey keyword by chance ("crm" inside a cuid), so the
+  // recipient's branches key on the words alone — as hangDuration already does.
+  const lower = (peerMessage(prompt)?.text ?? prompt).toLowerCase();
   if (lower.includes("can you check my gmail inbox?")) {
     return [
       {
@@ -223,6 +226,37 @@ export function inferScript(
       {
         assistant: "checking your computer's name.",
         toolCalls: [{ name: "user_computer_shell", args: { command: "hostname" } }],
+        complete: true,
+      },
+    ];
+  }
+  const lookAt = /look at (.+?) on my computer/i.exec(prompt)?.[1]?.trim();
+  if (lookAt) {
+    return [
+      {
+        assistant: `looking at ${lookAt}.`,
+        toolCalls: [{ name: "user_computer_observe", args: { app: lookAt } }],
+        complete: true,
+      },
+    ];
+  }
+  const typeIn = /type "([^"]+)" in a new (.+?) document on my computer/i.exec(prompt);
+  if (typeIn) {
+    return [
+      {
+        assistant: `typing in ${typeIn[2]}.`,
+        toolCalls: [
+          {
+            name: "user_computer_act",
+            args: {
+              app: typeIn[2],
+              actions: [
+                { kind: "menu", path: ["File", "New"] },
+                { kind: "type", text: typeIn[1] },
+              ],
+            },
+          },
+        ],
         complete: true,
       },
     ];
@@ -468,16 +502,12 @@ code-b
       },
     ];
   }
-  if (lower.includes("propose an instruction update")) {
+  const ownInstructions = /update your instructions to:\s*([^\n<&]+)/i.exec(prompt);
+  if (ownInstructions) {
     return [
       {
-        assistant: "",
-        toolCalls: [
-          {
-            name: "propose_instructions_update",
-            args: { instructions: "Draft only. Ask before sending.", reason: "Learned preference" },
-          },
-        ],
+        assistant: "updating my instructions.",
+        toolCalls: [{ name: "update_bot", args: { instructions: ownInstructions[1]!.trim() } }],
         complete: true,
       },
     ];

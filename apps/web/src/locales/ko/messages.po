@@ -1498,6 +1498,10 @@ msgstr "컴퓨터"
 msgid "Computer failed to boot"
 msgstr "컴퓨터를 시작하지 못했습니다"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "남은 컴퓨터 시간"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "컴퓨터가 절전 상태입니다"
@@ -3040,6 +3044,10 @@ msgstr ""
 msgid "Git event"
 msgstr "Git 이벤트"
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "홈으로"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "소유자"
 msgid "Page {page} of {count}"
 msgstr "{page} / {count}페이지"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "페이지를 찾을 수 없습니다"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr "PagerDuty 인시던트"
@@ -5273,6 +5285,10 @@ msgstr "서버 URL"
 msgid "Settings"
 msgstr "설정"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "설정이 업데이트됨"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "스페이스"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "읽기"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "음성 출력만"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"

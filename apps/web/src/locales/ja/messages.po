@@ -1498,6 +1498,10 @@ msgstr "コンピューター"
 msgid "Computer failed to boot"
 msgstr "コンピューターの起動に失敗しました"
 
+#: src/components/ModelCredits.tsx
+msgid "Computer hours left"
+msgstr "コンピューターの残り時間"
+
 #: src/pages/shell/computer-overlay.tsx
 msgid "Computer is asleep"
 msgstr "コンピューターはスリープ中です"
@@ -3040,6 +3044,10 @@ msgstr "準備中"
 msgid "Git event"
 msgstr "Gitイベント"
 
+#: src/pages/NotFound.tsx
+msgid "Go home"
+msgstr "ホームへ"
+
 #: src/lib/identity-display.ts
 #: src/pages/MessagingSettingsPanel.tsx
 #: src/pages/shell/chat-header.tsx
@@ -4320,6 +4328,10 @@ msgstr "オーナー"
 msgid "Page {page} of {count}"
 msgstr "{page} / {count} ページ"
 
+#: src/pages/NotFound.tsx
+msgid "Page not found"
+msgstr "ページが見つかりません"
+
 #: src/pages/RoutineEditor.tsx
 msgid "PagerDuty incident"
 msgstr "PagerDutyインシデント"
@@ -5273,6 +5285,10 @@ msgstr "サーバーURL"
 msgid "Settings"
 msgstr "設定"
 
+#: src/components/AskCard.tsx
+msgid "Settings updated"
+msgstr "設定を更新しました"
+
 #: src/pages/Shell.tsx
 msgid "Settings: {label}"
 msgstr ""
@@ -5511,10 +5527,6 @@ msgstr "スペース"
 #: src/pages/shell/message-view.tsx
 msgid "Speak"
 msgstr "読み上げ"
-
-#: src/pages/VoiceSettingsOverlay.tsx
-msgid "Speak only"
-msgstr "読み上げのみ"
 
 #: src/pages/shell/message-view.tsx
 msgid "Speak this reply"
