@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import type { Duplex } from "node:stream";
 import { USER_DEVICE_CONNECT_PATH } from "@rakazo/contracts";
+import { deferred } from "@rakazo/core/test-async";
 import type { PrismaClient } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -101,6 +102,11 @@ function fakePrisma() {
         const device = devices.get(row.deviceId)!;
         return { ...row, device: { name: device.name, platform: device.platform } };
       },
+    },
+    // Every test user is signed in.
+    session: {
+      findMany: async ({ where }: { where: { userId: { in: string[] } } }) =>
+        where.userId.in.map((userId) => ({ userId })),
     },
     $transaction: (run: (tx: unknown) => Promise<unknown>) => run(prisma),
   };
@@ -588,13 +594,10 @@ describe("device socket upgrade", () => {
     const warn = vi.spyOn(getLogger(), "warn");
     // The upgrade authenticates through the lookup that also says why a token was refused.
     const authenticate = vi.spyOn(hub as unknown as { lookup: () => Promise<unknown> }, "lookup");
-    let release = () => {};
-    const lookup = vi.spyOn(prisma.userDevice, "findUnique").mockImplementationOnce(
-      (() =>
-        new Promise((resolve) => {
-          release = () => resolve(deviceRows.get(device.id));
-        })) as never,
-    );
+    const release = deferred<unknown>();
+    const lookup = vi
+      .spyOn(prisma.userDevice, "findUnique")
+      .mockImplementationOnce((() => release.promise) as never);
     const { port, client, accepted, stop } = await rawUpgrade(
       hub,
       USER_DEVICE_CONNECT_PATH,
@@ -606,7 +609,7 @@ describe("device socket upgrade", () => {
       client.resetAndDestroy();
       await closed;
       expect(warn).toHaveBeenCalledWith(...upgradeSocketError);
-      release();
+      release.resolve(deviceRows.get(device.id));
       await expect(authenticate.mock.results[0]!.value).resolves.toMatchObject({
         device: { id: device.id },
       });

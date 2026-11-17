@@ -7,6 +7,7 @@ import type {
   BrowserProvider,
   BrowserPurchaseCheckRequest,
   BrowserPurchaseCheckResult,
+  BrowserPurchaseItem,
   BrowserSnapshotNode,
   BrowserSnapshotRequest,
   BrowserSnapshotResult,
@@ -30,6 +31,10 @@ const UNCHECKED_PURCHASE: NonNullable<BrowserPurchaseCheckResult["purchase"]> = 
   amount: "",
   amountSource: "page",
 };
+
+const isPurchaseItem = (item: unknown): item is BrowserPurchaseItem =>
+  typeof (item as BrowserPurchaseItem | null)?.name === "string" &&
+  typeof (item as BrowserPurchaseItem).amount === "string";
 
 /**
  * Whether a failed purchase check means this computer cannot check at all, rather than that the check
@@ -243,18 +248,18 @@ export class ComputerBrowserProvider implements BrowserProvider {
     context: AdapterContext,
   ): Promise<BrowserPurchaseCheckResult> {
     if (this.canUseInProcess(computer)) return { purchase: null };
-    const live = await this.runLive(
-      computer,
-      {
-        command: "purchase_check",
-        actions: request.actions,
-        desktop: request.desktop,
-        enter: request.enter,
-        points: request.points,
-        unplaced: request.unplaced,
-      },
-      context,
-    );
+    const probe: PageBrowserCommand = {
+      command: "purchase_check",
+      actions: request.actions,
+      desktop: request.desktop,
+      enter: request.enter,
+      points: request.points,
+      unplaced: request.unplaced,
+    };
+    let live = await this.runLive(computer, probe, context);
+    // A busy page often answers the next probe; the probe presses nothing, so one retry is safe.
+    if (live?.ok !== true && live?.error?.startsWith("Page browser timed out;"))
+      live = await this.runLive(computer, probe, context);
     if (live?.ok !== true) {
       if (!cannotCheck(live?.error)) {
         // The check started and failed (timed out, killed, a page it could not read): ask.
@@ -268,7 +273,14 @@ export class ComputerBrowserProvider implements BrowserProvider {
       return { purchase: null };
     }
     const found = live.purchase as
-      | { steps?: unknown; label?: unknown; amount?: unknown; amountFrom?: unknown }
+      | {
+          steps?: unknown;
+          label?: unknown;
+          amount?: unknown;
+          amountFrom?: unknown;
+          total?: unknown;
+          items?: unknown;
+        }
       | null
       | undefined;
     if (!found) return { purchase: null };
@@ -282,6 +294,8 @@ export class ComputerBrowserProvider implements BrowserProvider {
         label: typeof found.label === "string" ? found.label : "",
         amount: typeof found.amount === "string" ? found.amount : "",
         amountSource: found.amountFrom === "button" ? "button" : "page",
+        ...(typeof found.total === "string" && found.total ? { total: found.total } : {}),
+        ...(Array.isArray(found.items) ? { items: found.items.filter(isPurchaseItem) } : {}),
       },
     };
   }

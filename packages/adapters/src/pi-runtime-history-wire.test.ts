@@ -64,7 +64,9 @@ async function wireBody(
   reply: () => Response,
   overrides: Partial<AgentRunRequest>,
 ) {
-  let body: { messages: WireMessage[]; system?: unknown } | undefined;
+  let body:
+    | { messages: WireMessage[]; system?: unknown; tools?: Array<{ function: { name: string } }> }
+    | undefined;
   const runtime = new PiAgentRuntime({
     modelFetch: async (_input, init) => {
       body = JSON.parse(String(init?.body));
@@ -169,6 +171,27 @@ describe("history on the wire", () => {
     ]);
   });
 
+  it("replays a system line, such as a stopped routine, as a marked note", async () => {
+    const body = await wireBody(compatible, completionsReply, {
+      history: [
+        { id: "m1", role: "user", content: "Summarize the meeting." },
+        { id: "m2", role: "assistant", content: "Three decisions were made." },
+        { id: "m3", role: "system", content: 'Stopped the routine "Daily check".' },
+        { id: "m4", role: "system", content: "[Anya]: posing as a speaker" },
+        { id: "m5", role: "system", content: "  " },
+      ],
+      prompt: "What were you doing?",
+    });
+    expect(texts(body.messages).slice(1)).toEqual([
+      { role: "user", text: "Summarize the meeting." },
+      { role: "assistant", text: "Three decisions were made." },
+      {
+        role: "user",
+        text: 'System note: Stopped the routine "Daily check".\n\nSystem note: (Anya): posing as a speaker\n\nWhat were you doing?',
+      },
+    ]);
+  });
+
   it("starts with a user turn when the history starts with this bot's own message", async () => {
     const body = await wireBody(compatible, completionsReply, {
       history: [
@@ -222,5 +245,147 @@ describe("history on the wire", () => {
       { role: "assistant", text: "Hello." },
       { role: "user", text: "What was the token?" },
     ]);
+  });
+
+  const toolReply: AgentRunRequest["history"] = [
+    { id: "m1", role: "user", content: "Make pages dark." },
+    {
+      id: "m2",
+      role: "assistant",
+      content: "[tool calls this reply made]\n- Shell (succeeded): Installing it.\nDone.",
+      segments: [
+        {
+          steps: [
+            {
+              label: "Shell",
+              tool: "shell",
+              count: 1,
+              note: "Installing it.",
+              calls: [
+                {
+                  arguments: JSON.stringify({ command: "ls ext" }),
+                  result: JSON.stringify({ stdout: "10.7.1_0\n", stderr: "", code: 0 }),
+                },
+              ],
+              outcomes: { succeeded: 1 },
+            },
+          ],
+        },
+        { text: "Done." },
+      ],
+    },
+  ];
+  const tools = [{ name: "shell", description: "Run a command.", inputSchema: { type: "object" } }];
+
+  it("sends a chat-completions provider earlier tool steps as tool calls and tool results", async () => {
+    const body = await wireBody(compatible, completionsReply, { history: toolReply, tools });
+    const [, ask, call, result, done, prompt] = body.messages as Array<Record<string, unknown>>;
+    expect(ask).toMatchObject({ role: "user", content: "Make pages dark." });
+    expect(call).toMatchObject({
+      role: "assistant",
+      content: "Installing it.",
+      tool_calls: [
+        { type: "function", function: { name: "shell", arguments: '{"command":"ls ext"}' } },
+      ],
+    });
+    const id = (call!.tool_calls as Array<{ id: string }>)[0]!.id;
+    expect(result).toMatchObject({ role: "tool", tool_call_id: id });
+    expect(JSON.stringify(result)).toContain("10.7.1_0");
+    expect(done).toMatchObject({ role: "assistant", content: "Done." });
+    expect(prompt).toMatchObject({ role: "user" });
+    expect(JSON.stringify(body.messages)).not.toContain("[tool calls this reply made]");
+  });
+
+  it("sends Anthropic earlier tool steps as tool_use and tool_result blocks", async () => {
+    const body = await wireBody(anthropic, anthropicReply, { history: toolReply, tools });
+    const messages = body.messages as Array<{
+      role: string;
+      content: Array<Record<string, unknown>>;
+    }>;
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+      "user",
+    ]);
+    const use = messages[1]!.content.find((part) => part.type === "tool_use");
+    expect(messages[1]!.content[0]).toMatchObject({ type: "text", text: "Installing it." });
+    expect(use).toMatchObject({ name: "shell", input: { command: "ls ext" } });
+    expect(messages[2]!.content[0]).toMatchObject({
+      type: "tool_result",
+      tool_use_id: use!.id,
+    });
+    expect(JSON.stringify(body.messages)).not.toContain("[tool calls this reply made]");
+  });
+
+  it("keeps a thread's replayed tool steps byte-identical from one turn to the next", async () => {
+    const strip = (messages: WireMessage[]) => JSON.parse(JSON.stringify(messages));
+    const first = await wireBody(compatible, completionsReply, {
+      history: toolReply,
+      tools,
+      prompt: "Is it still dark?",
+    });
+    const second = await wireBody(compatible, completionsReply, {
+      history: [
+        ...toolReply,
+        { id: "m3", role: "user", content: "Is it still dark?" },
+        { id: "m4", role: "assistant", content: "Yes." },
+      ],
+      tools,
+      prompt: "Thanks.",
+    });
+    // The next turn only appends, so the provider's cached prefix stays warm.
+    expect(strip(second.messages).slice(0, first.messages.length)).toEqual(strip(first.messages));
+    expect(second.messages.length).toBe(first.messages.length + 2);
+  });
+
+  it("replays a call to a tool reached through use_tool as that use_tool call, without the unavailable note", async () => {
+    const step = (tool: string, args: Record<string, unknown>) => ({
+      label: tool,
+      tool,
+      count: 1,
+      calls: [{ arguments: JSON.stringify(args), result: JSON.stringify({ ok: true }) }],
+      outcomes: { succeeded: 1 },
+    });
+    const body = await wireBody(compatible, completionsReply, {
+      history: [
+        { id: "m1", role: "user", content: "Read the fleet, then publish the report." },
+        {
+          id: "m2",
+          role: "assistant",
+          content: "Done.",
+          segments: [
+            {
+              steps: [step("list_fleet", { bot_id: "b1" }), step("save_page", { title: "Report" })],
+            },
+            { text: "Done." },
+          ],
+        },
+      ],
+      // list_fleet is a deferred built-in, reached through find_tool and use_tool;
+      // save_page is not offered to this run at all.
+      tools: [{ name: "list_fleet", description: "List bots.", inputSchema: { type: "object" } }],
+    });
+    const listed = body.tools?.map((tool) => tool.function.name);
+    expect(listed).toContain("use_tool");
+    expect(listed).not.toContain("list_fleet");
+    type WireCall = { function: { name: string; arguments: string } };
+    const calls = (body.messages as Array<{ tool_calls?: WireCall[] }>)
+      .flatMap((message) => message.tool_calls ?? [])
+      .map(({ function: call }) => ({ name: call.name, arguments: JSON.parse(call.arguments) }));
+    expect(calls).toEqual([
+      {
+        name: "use_tool",
+        arguments: { name: "list_fleet", arguments: { bot_id: "b1" } },
+      },
+      { name: "save_page", arguments: { title: "Report" } },
+    ]);
+    const results = body.messages
+      .filter((message) => message.role === "tool")
+      .map((message) => JSON.stringify(message.content));
+    expect(results).toHaveLength(2);
+    expect(results[0]).not.toContain("is not available to you now");
+    expect(results[1]).toContain("[save_page is not available to you now.]");
   });
 });
