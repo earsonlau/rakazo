@@ -1,3 +1,4 @@
+import { MenuView } from "@expo/ui/community/menu";
 import { ph } from "@lingui/core/macro";
 import { useLingui } from "@lingui/react/macro";
 import { useTimeout } from "@rakazo/chat-ui/hooks";
@@ -19,6 +20,7 @@ import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   AppState,
   Modal,
   Pressable,
@@ -39,6 +41,7 @@ import { ComputerKeyboardBar } from "../components/computers/computer-keyboard-b
 import { ComputerModePicker } from "../components/computers/computer-mode-picker";
 import { GlassIconButton } from "../components/native/glass-icon-button";
 import { NativeActionButton } from "../components/native/native-action-button";
+import { NativeSymbol } from "../components/native/native-symbol";
 import { currentApiBase, rpc } from "../lib/api/api";
 import { errorText } from "../lib/api/user-error";
 import { stacksAtTextScale } from "../lib/appearance/text-scale";
@@ -67,15 +70,17 @@ import { useComputerBoot } from "../lib/computers/use-computer-boot";
 import { tabletopLayout } from "../lib/layout/fold-layout";
 import { useFoldRegions } from "../lib/layout/fold-regions";
 import { useSideInsets } from "../lib/layout/side-insets";
-import { useMobileTokens } from "../lib/native/native";
+import { useMobileTokens, useResolvedAppearance } from "../lib/native/native";
 import { iosAtLeast } from "../lib/native/native-controls";
 import { useScreenHeader } from "../lib/navigation/screen-header";
 import { useAppForeground } from "../lib/platform/app-foreground";
+import { rpcQuery, useSave } from "../lib/query/query";
 
 export default function Computer() {
   const sideInsets = useSideInsets();
   const { t } = useLingui();
   const tokens = useMobileTokens();
+  const colorScheme = useResolvedAppearance();
   const router = useRouter();
   const windowSize = useWindowDimensions();
   const stacked = stacksAtTextScale(windowSize.fontScale);
@@ -171,6 +176,59 @@ export default function Computer() {
   }
 
   const label = computerLabel(computer?.mode, name);
+
+  const stop = useSave({
+    save: async (targetBotId: string, send) => {
+      const action = refreshController.beginAction();
+      try {
+        const status = await send(
+          "computer/stop",
+          { botId: targetBotId },
+          { timeoutMs: COMPUTER_LIFECYCLE_TIMEOUT_MS },
+        );
+        return action.isActive() ? status : null;
+      } finally {
+        action.finish();
+      }
+    },
+    stale: [rpcQuery("computer/status", { botId: botId ?? "" }).queryKey],
+    onSaved: (status) => {
+      if (!status || status.state === "running" || !refreshController.isActive()) return;
+      autoBooted.current = status.botId;
+      setComputerOpen(false);
+      setComputer(status);
+      setScreenUrl(null);
+      setScreenError(null);
+    },
+    onFailed: (failure) => {
+      if (refreshController.isActive()) Alert.alert(t`Could not stop computer`, errorText(failure));
+    },
+  });
+  const showStop =
+    Boolean(botId) &&
+    computer?.botId === botId &&
+    computer?.state === "running" &&
+    !(computer.runsOnUserMachine ?? computer.kind === "desktop");
+  const stopDisabled =
+    stop.pending ||
+    booting ||
+    switching ||
+    releasing ||
+    Boolean(computer?.controlledByOther || computer?.busyBotName || computer?.takeoverRequested);
+
+  function confirmStop() {
+    if (!botId || stopDisabled || !refreshController.isActive()) return;
+    Alert.alert(t`Stop computer?`, t`The workspace will be saved. Running programs will close.`, [
+      { text: t`Cancel`, style: "cancel" },
+      {
+        text: t`Stop computer`,
+        style: "destructive",
+        onPress: () => {
+          if (refreshController.isActive()) stop.run(botId);
+        },
+      },
+    ]);
+  }
 
   useScreenHeader({ title: label });
 
@@ -695,6 +753,40 @@ export default function Computer() {
                     }
                   />
                 )}
+                {showStop ? (
+                  <MenuView
+                    colorScheme={colorScheme}
+                    actions={[
+                      {
+                        id: "stop",
+                        title: stop.pending ? t`Stopping…` : t`Stop computer`,
+                        attributes: { destructive: true, disabled: stopDisabled },
+                      },
+                    ]}
+                    onPressAction={({ nativeEvent }) => {
+                      if (nativeEvent.event === "stop") confirmStop();
+                    }}
+                  >
+                    <View
+                      accessible
+                      accessibilityRole="button"
+                      accessibilityLabel={t`Computer actions`}
+                      style={{
+                        width: 36,
+                        height: 44,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <NativeSymbol
+                        ios="ellipsis"
+                        android="ellipsis-horizontal"
+                        size={18}
+                        color={tokens.foreground}
+                      />
+                    </View>
+                  </MenuView>
+                ) : null}
                 <GlassIconButton
                   accessibilityLabel={t`Close computer`}
                   onPress={() => setComputerOpen(false)}

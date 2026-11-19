@@ -1,6 +1,13 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useTimeout } from "@rakazo/chat-ui/hooks";
-import type { Bot, ComputerReleaseReason, Me, Run, ThreadSnapshot } from "@rakazo/contracts";
+import type {
+  Bot,
+  ComputerReleaseReason,
+  ComputerStatus,
+  Me,
+  Run,
+  ThreadSnapshot,
+} from "@rakazo/contracts";
 import { isComputerAllowanceUsed } from "@rakazo/contracts";
 import {
   COMPUTER_CONTROL_HEARTBEAT_MS,
@@ -201,6 +208,15 @@ export function useComputerControls({
     if (readScreen) await refreshComputerScreen(targetBotId);
   }
 
+  function computerStopped(status: ComputerStatus) {
+    if (status.state === "running") return;
+    cacheComputerFor(status.botId, { computer: status, screenUrl: null });
+    if (computerBotIdRef.current !== status.botId) return;
+    setComputerOpen(false);
+    setScreenUrl(null);
+    commitComputer(status);
+  }
+
   useEffect(() => {
     setComputerOpen(false);
     setComputerError(null);
@@ -243,7 +259,13 @@ export function useComputerControls({
   }, [computerBlockedByRun]);
 
   useEventListener(computerOpen ? window : null, "keydown", (event) => {
-    if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229)
+    if (
+      event.key === "Escape" &&
+      !event.isComposing &&
+      event.keyCode !== 229 &&
+      !event.defaultPrevented &&
+      !document.querySelector('[role="alertdialog"]')
+    )
       setComputerOpen(false);
   });
 
@@ -512,6 +534,7 @@ export function useComputerControls({
     onReleaseComputer,
     releaseComputer,
     refreshComputerFor,
+    computerStopped,
     holdComputerRecovery,
     releaseComputerRecovery,
     showComputerRecoveryHint,

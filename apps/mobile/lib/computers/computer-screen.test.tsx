@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Computer from "../../app/computer";
 
 const rpc = vi.hoisted(() => vi.fn());
+const alert = vi.hoisted(() => vi.fn());
 const textScale = vi.hoisted(() => ({ fontScale: 1 }));
 const appState = vi.hoisted(() => ({ listeners: new Set<(state: string) => void>() }));
 const foreground = vi.hoisted(() => ({ value: true }));
@@ -93,6 +94,7 @@ vi.mock("react-native", () => {
   return {
     ActivityIndicator: (props: { size?: string }) =>
       createElement("progress", { "data-size": props.size }),
+    Alert: { alert },
     AppState: {
       addEventListener: (_type: string, listener: (state: string) => void) => {
         appState.listeners.add(listener);
@@ -108,6 +110,33 @@ vi.mock("react-native", () => {
     useWindowDimensions: () => ({ width: 393, height: 852, scale: 3, ...textScale }),
   };
 });
+
+vi.mock("@expo/ui/community/menu", () => ({
+  MenuView: ({
+    actions,
+    onPressAction,
+    children,
+  }: {
+    actions: { id: string; title: string; attributes: { disabled: boolean } }[];
+    onPressAction: (event: { nativeEvent: { event: string } }) => void;
+    children: ReactNode;
+  }) => (
+    <>
+      {children}
+      {actions.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          disabled={action.attributes.disabled}
+          onClick={() => onPressAction({ nativeEvent: { event: action.id } })}
+        >
+          {action.title}
+        </button>
+      ))}
+    </>
+  ),
+}));
+vi.mock("../../components/native/native-symbol", () => ({ NativeSymbol: () => null }));
 
 vi.mock("../platform/app-foreground", () => ({
   useAppForeground: () => foreground.value,
@@ -218,9 +247,20 @@ vi.mock("../../components/computers/computer-mode-picker", () => {
 });
 
 const apiBase = vi.hoisted(() => ({ current: "https://api.example.test" }));
-vi.mock("../api/api", () => ({ currentApiBase: () => apiBase.current, rpc }));
+vi.mock("../api/api", () => ({
+  currentApiBase: () => apiBase.current,
+  selectedSpaceId: () => "space-a",
+  captureApiRequestContext: async () => ({
+    apiBase: apiBase.current,
+    sessionGeneration: 1,
+    headers: { "x-rakazo-space-id": "space-a" },
+  }),
+  rpc,
+}));
+vi.mock("../api/session", () => ({ currentSessionGeneration: () => 1 }));
 
 vi.mock("../native/native", () => ({
+  useResolvedAppearance: () => "light",
   useMobileTokens: () => ({
     background: "background",
     border: "border",
@@ -272,6 +312,7 @@ describe("computer screen", () => {
 
   beforeEach(() => {
     rpc.mockReset();
+    alert.mockReset();
     routeParams.botId = "bot-1";
     textScale.fontScale = 1;
     picker.mounts = 0;
@@ -321,6 +362,49 @@ describe("computer screen", () => {
       (button) => button.textContent === "Take control",
     );
   }
+
+  it.each(["stopped", "busy"] as const)(
+    "waits for confirmation and handles a %s result without booting again",
+    async (outcome) => {
+      respond({ ...botWorking, busyBotName: null });
+      const original = rpc.getMockImplementation()!;
+      const stopped = deferred<ComputerStatus>();
+      rpc.mockImplementation((method, ...args) =>
+        method === "computer/stop" ? stopped.promise : original(method, ...args),
+      );
+      const view = await render();
+      await act(async () => preview(view).click());
+      const button = Array.from(view.querySelectorAll<HTMLButtonElement>("section button")).find(
+        (item) => item.textContent === "Stop computer",
+      );
+      expect(button).toBeDefined();
+      const bootCount = calls("computer/boot").length;
+      await act(async () => button?.click());
+      expect(calls("computer/stop")).toHaveLength(0);
+      expect(alert.mock.lastCall?.[0]).toBe("Stop computer?");
+      await act(async () => alert.mock.lastCall?.[2][1].onPress());
+      expect(calls("computer/stop")).toHaveLength(1);
+      expect(button?.disabled).toBe(true);
+      await act(async () => {
+        if (outcome === "busy") stopped.reject(new Error("Computer is busy"));
+        else
+          stopped.resolve({
+            ...botWorking,
+            state: "stopped",
+            busyBotName: null,
+            screenAvailable: false,
+          });
+      });
+      if (outcome === "busy") {
+        expect(alert.mock.lastCall?.[0]).toBe("Could not stop computer");
+        expect(view.querySelector("section iframe")).not.toBeNull();
+      } else {
+        expect(view.querySelector("iframe")).toBeNull();
+        expect(view.querySelector("section")).toBeNull();
+      }
+      expect(calls("computer/boot")).toHaveLength(bootCount);
+    },
+  );
 
   it("offers Retry screen when the full-window page fails to load", async () => {
     respond(botWorking);
@@ -769,7 +853,7 @@ describe("computer screen", () => {
     expect(
       flat.querySelector("section [data-avoids-keyboard]")?.getAttribute("data-avoids-keyboard"),
     ).toBe("true");
-    expect(flat.querySelector("section [data-height]")).toBeNull();
+    expect(flat.querySelector("section [data-height][data-padding-top]")).toBeNull();
     act(() => root?.unmount());
     container?.remove();
 
@@ -778,7 +862,7 @@ describe("computer screen", () => {
     const viewing = await render();
     await act(async () => preview(viewing).click());
     await settle();
-    expect(viewing.querySelector("section [data-height]")).toBeNull();
+    expect(viewing.querySelector("section [data-height][data-padding-top]")).toBeNull();
     expect(viewing.querySelector("[data-keyboard-bar]")).toBeNull();
   });
 

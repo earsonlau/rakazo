@@ -1519,6 +1519,7 @@ function SpaceShell() {
           computerBooting={computerControls.computerBooting}
           onStopTeaching={stopTeaching}
           onStopRun={() => void stopRun()}
+          onComputerStopped={computerControls.computerStopped}
           onRelease={computerControls.releaseComputer}
           onTakeControl={() => void openComputer(computerBot.id, true)}
           onStart={() => void openComputer(computerBot.id)}

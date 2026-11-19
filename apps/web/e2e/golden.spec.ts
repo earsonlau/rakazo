@@ -101,6 +101,20 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await captureScreenshot(page, testInfo, "09a-computer-takeover-skipped");
 
   await openBotPanel(page);
+  await sidePanel.getByTestId("computer-preview").hover();
+  await openComputer.click();
+  await chrome.getByRole("button", { name: "Computer actions" }).click();
+  await page.getByRole("menuitem", { name: "Stop computer" }).click({
+    timeout: realSandboxTimeout(90_000, 30_000),
+  });
+  const stopComputer = page.getByRole("alertdialog", { name: "Stop computer?" });
+  await expect(stopComputer).toBeVisible();
+  await captureScreenshot(page, testInfo, "09b-stop-computer");
+  await stopComputer.getByRole("button", { name: "Cancel" }).click();
+  await expect(stopComputer).toBeHidden();
+  await page.getByRole("button", { name: "Close computer" }).click();
+
+  await openBotPanel(page);
   await page.getByTestId("routine-create-button").click();
   await page.locator("label:has-text('Name') input").fill("Monday briefing");
   await page

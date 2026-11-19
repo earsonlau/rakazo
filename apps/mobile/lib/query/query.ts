@@ -3,7 +3,7 @@ import type { RpcInput, RpcOutput, RpcPath } from "@rakazo/contracts";
 import type { DataTag, QueryFunction, QueryKey } from "@tanstack/react-query";
 import { QueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ApiRequestContext, RpcArgs } from "../api/api";
+import type { ApiRequestContext, RpcArgs, RpcOptions } from "../api/api";
 import { captureApiRequestContext, currentApiBase, rpc, selectedSpaceId } from "../api/api";
 import { currentSessionGeneration } from "../api/session";
 import type { SettingsTarget } from "./settings-target";
@@ -111,13 +111,24 @@ export function formRead<T>(read: {
   };
 }
 
+type SaveOptions = Pick<RpcOptions, "timeoutMs">;
+
 /** One rpc write of a save. It is refused once the save's server, session or Space is no longer current. */
-export type SaveSend = <P extends RpcPath>(proc: P, input: RpcInput<P>) => Promise<RpcOutput<P>>;
+export type SaveSend = <P extends RpcPath>(
+  proc: P,
+  input: RpcInput<P>,
+  options?: SaveOptions,
+) => Promise<RpcOutput<P>>;
 
 /** Writes with this request context, or with the current one when there is none. */
 export function sendWith(requestContext: ApiRequestContext | undefined): SaveSend {
-  return (proc, body) =>
-    rpc(proc, ...([body, requestContext && { requestContext }] as RpcArgs<typeof proc>));
+  return (proc, body, options) =>
+    rpc(
+      proc,
+      ...([body, requestContext || options ? { ...options, requestContext } : undefined] as RpcArgs<
+        typeof proc
+      >),
+    );
 }
 
 /**
@@ -193,14 +204,14 @@ export function useSave<Input = void, Saved = unknown>(options: {
         (requestContext) => ({ requestContext }),
         (failure: Error) => ({ failure }),
       );
-      const send: SaveSend = async (proc, body) => {
+      const send: SaveSend = async (proc, body, requestOptions) => {
         const pin = await pinned;
         if ("failure" in pin) throw pin.failure;
         const { requestContext } = pin;
         const sent = requestScope(requestContext, account);
         if (sent !== scope || sent !== scopeKey())
           throw new Error(t`Something went wrong. Try again.`);
-        return sendWith(requestContext)(proc, body);
+        return sendWith(requestContext)(proc, body, requestOptions);
       };
       void (async () => {
         const saved = await save(input, send);

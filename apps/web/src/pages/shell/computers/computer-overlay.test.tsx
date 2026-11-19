@@ -31,6 +31,14 @@ vi.mock("../../../components/teach/TeachRecordingChrome", () => ({
   TeachRecordingChrome: () => null,
   TeachStopButton: () => null,
 }));
+vi.mock("./computer-stop-menu", () => ({
+  ComputerStopMenu: ({ visible, disabled }: { visible: boolean; disabled: boolean }) =>
+    visible ? (
+      <button type="button" disabled={disabled}>
+        Computer actions
+      </button>
+    ) : null,
+}));
 
 import { ComputerOverlay } from "./computer-overlay";
 
@@ -61,13 +69,13 @@ function computer(state: ComputerStatus["state"]): ComputerStatus {
 async function render(
   state: ComputerStatus["state"],
   onStart = vi.fn(),
-  options: { hasControl?: boolean; shared?: boolean } = {},
+  options: { hasControl?: boolean; shared?: boolean; status?: Partial<ComputerStatus> } = {},
 ) {
   await act(async () => {
     root.render(
       <ComputerOverlay
         bot={bot}
-        computer={{ ...computer(state), ...(options.shared ? { shared: true } : {}) }}
+        computer={{ ...computer(state), shared: options.shared, ...options.status }}
         computerViewport={null}
         recordingSkill={null}
         teachBusy={false}
@@ -82,6 +90,7 @@ async function render(
         computerBooting={null}
         onStopTeaching={() => undefined}
         onStopRun={() => undefined}
+        onComputerStopped={() => undefined}
         onRelease={async () => undefined}
         onTakeControl={() => undefined}
         onStart={onStart}
@@ -123,6 +132,23 @@ it("offers Start for an asleep computer", async () => {
   await render("suspended");
   expect(container.textContent).toContain("Computer is asleep");
   expect(startButton()).toBeDefined();
+});
+
+it("only offers stopping the displayed bot's running remote computer", async () => {
+  const action = () =>
+    [...container.querySelectorAll("button")].find(
+      (button) => button.textContent === "Computer actions",
+    );
+  await render("running");
+  expect(action()?.disabled).toBe(false);
+  await render("running", vi.fn(), { status: { controlledByOther: true } });
+  expect(action()?.disabled).toBe(true);
+  await render("running", vi.fn(), { status: { runsOnUserMachine: true } });
+  expect(action()).toBeUndefined();
+  await render("running", vi.fn(), { status: { botId: "another-bot" } });
+  expect(action()).toBeUndefined();
+  await render("stopped");
+  expect(action()).toBeUndefined();
 });
 
 it("says sign-ins are shared while someone in a shared space has control", async () => {

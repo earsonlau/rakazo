@@ -19,6 +19,7 @@ import {
   windowChromeKind,
 } from "../../../lib/platform/desktop";
 import { ComputerReleaseActions } from "./computer-release-actions";
+import { ComputerStopMenu } from "./computer-stop-menu";
 import { computerLabel, DesktopKindEmptyState } from "./computer-view";
 
 type ComputerOverlayProps = {
@@ -41,6 +42,7 @@ type ComputerOverlayProps = {
   computerBooting: ReactNode;
   onStopTeaching: () => void | Promise<void>;
   onStopRun: () => void;
+  onComputerStopped: (status: ComputerStatus) => void;
   onRelease: (reason?: ComputerReleaseReason) => Promise<void>;
   onTakeControl: () => void;
   onStart: () => void;
@@ -67,6 +69,7 @@ export function ComputerOverlay({
   computerBooting,
   onStopTeaching,
   onStopRun,
+  onComputerStopped,
   onRelease,
   onTakeControl,
   onStart,
@@ -85,14 +88,14 @@ export function ComputerOverlay({
       >
         <div
           data-testid="computer-chrome"
-          className="app-no-drag flex items-center justify-between gap-4 border-b border-sidebar-border px-[18px] py-3.5"
+          className="app-no-drag flex items-center justify-between gap-2 border-b border-sidebar-border px-3 py-3.5 sm:gap-4 sm:px-[18px]"
           style={
             windowChromeKind(desktopBridge()) === "darwin"
               ? { paddingLeft: DARWIN_WINDOW_CONTROLS_WIDTH_PX + 18 }
               : undefined
           }
         >
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <BotAvatar
               avatarSet={bot.avatarSet}
               color={bot.color}
@@ -122,7 +125,7 @@ export function ComputerOverlay({
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             {composerRunning ? (
               <Button
                 type="button"
@@ -163,6 +166,26 @@ export function ComputerOverlay({
                 onRefresh={onRefreshTeaching}
               />
             ) : null}
+            <ComputerStopMenu
+              key={`stop:${bot.id}`}
+              botId={bot.id}
+              visible={
+                !recordingSkill &&
+                computer?.botId === bot.id &&
+                computer.state === "running" &&
+                !runsOnUserMachine(computer)
+              }
+              disabled={
+                booting ||
+                composerRunning ||
+                Boolean(
+                  computer?.controlledByOther ||
+                    computer?.busyBotName ||
+                    computer?.takeoverRequested,
+                )
+              }
+              onStopped={onComputerStopped}
+            />
             <Button
               variant="ghost"
               size="icon-sm"
